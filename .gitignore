@@ -43,3 +43,4 @@ atlantis-ui/.env
 # OS
 .DS_Store
 Thumbs.db
+atlantis-ui/node_modules/
