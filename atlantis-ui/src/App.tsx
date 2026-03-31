@@ -1,0 +1,952 @@
+import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
+
+// ============================================================
+// CONFIGURACIÓN
+// ============================================================
+const API_URL = 'http://localhost:8080';
+const API_TOKEN = 'ATLANTIS_SECURE_2026';
+
+// Interceptores
+axios.interceptors.request.use(
+  (config) => {
+    console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
+    return config;
+  },
+  (error) => {
+    console.error('📤 Request error:', error);
+    return Promise.reject(error);
+  }
+);
+
+axios.interceptors.response.use(
+  (response) => {
+    console.log(`📥 ${response.status} ${response.config.url}`);
+    return response;
+  },
+  (error) => {
+    console.error('📥 Response error:', error.message);
+    if (error.response) {
+      console.error('   Status:', error.response.status);
+      console.error('   Data:', error.response.data);
+    }
+    return Promise.reject(error);
+  }
+);
+
+// ============================================================
+// INTERFACES (EXISTENTES)
+// ============================================================
+interface Stats {
+  total_devices: number;
+  total_events: number;
+  event_counts: Record<string, number>;
+}
+
+interface Device {
+  ip: string;
+  mac: string;
+  vendor: string;
+  hostname: string;
+  first_seen: string;
+  last_seen: string;
+  appearances: number;
+}
+
+interface SecurityEvent {
+  timestamp: string;
+  device_ip: string;
+  event_type: string;
+  description: string;
+  severity: string;
+  resolved: boolean;
+}
+
+interface BlockedIP {
+  ip: string;
+  blocked_at: string;
+  method: string;
+  firewall_verified: boolean;
+  alert?: string;
+}
+
+interface HoneypotStats {
+  running: boolean;
+  total_connections: number;
+  ports: Array<{ port: number; connections: number; running: boolean }>;
+  uptime_seconds: number;
+  start_time: string;
+}
+
+interface HoneypotAttack {
+  timestamp: string;
+  session_id: string;
+  ip: string;
+  port: number;
+  username: string;
+  password: string;
+  type: string;
+}
+
+interface ZombieDetection {
+  timestamp: string;
+  file: string;
+  reason: string;
+  score: number;
+  quarantined: boolean;
+  type: string;
+}
+
+interface ZombieStats {
+  total_detections: number;
+  recent_detections: ZombieDetection[];
+}
+
+// ============================================================
+// NUEVAS INTERFACES
+// ============================================================
+interface AdvancedHoneypotStats {
+  http: number;
+  ftp: number;
+  smb: number;
+}
+
+interface TrafficAnomaly {
+  timestamp: string;
+  ip: string;
+  port: number;
+  reasons: string[];
+  threat_info?: {
+    malicious: boolean;
+    category: string;
+  };
+  severity: string;
+}
+
+interface TrafficStats {
+  total_connections: number;
+  suspicious_ips: number;
+  active_connections: number;
+  threat_matches: number;
+  total_ips_seen: number;
+  running: boolean;
+}
+
+interface ThreatIntelStats {
+  total_ips: number;
+  blocked_count: number;
+  last_update: string | null;
+  by_source: Record<string, number>;
+  by_category: Record<string, number>;
+}
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  action?: string;
+  actionResult?: string;
+  modelUsed?: string;
+  safeMode?: boolean;
+}
+
+// ============================================================
+// FUNCIÓN PARA ASEGURAR ARRAY
+// ============================================================
+function ensureArray<T>(data: any): T[] {
+  if (Array.isArray(data)) return data;
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+// ============================================================
+// COMPONENTE PRINCIPAL
+// ============================================================
+function App() {
+  // Estados existentes
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [events, setEvents] = useState<SecurityEvent[]>([]);
+  const [blockedIPs, setBlockedIPs] = useState<BlockedIP[]>([]);
+  const [honeypotStats, setHoneypotStats] = useState<HoneypotStats | null>(null);
+  const [honeypotAttacks, setHoneypotAttacks] = useState<HoneypotAttack[]>([]);
+  const [zombieStats, setZombieStats] = useState<ZombieStats | null>(null);
+  const [zombieRunning, setZombieRunning] = useState<boolean>(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [customIpToBlock, setCustomIpToBlock] = useState('');
+  const [autoBlockStatus, setAutoBlockStatus] = useState<boolean | null>(null);
+  const [honeypotRunning, setHoneypotRunning] = useState<boolean>(false);
+  const [backendConnected, setBackendConnected] = useState<boolean>(false);
+  const [zombieFilePath, setZombieFilePath] = useState('');
+  const [zombieDirPath, setZombieDirPath] = useState('');
+  const [zombieRecursive, setZombieRecursive] = useState(false);
+
+  // Nuevos estados
+  const [advancedHoneypotStats, setAdvancedHoneypotStats] = useState<AdvancedHoneypotStats>({ http: 0, ftp: 0, smb: 0 });
+  const [advancedHoneypotRunning, setAdvancedHoneypotRunning] = useState<boolean>(false);
+  const [trafficStats, setTrafficStats] = useState<TrafficStats | null>(null);
+  const [trafficAnomalies, setTrafficAnomalies] = useState<TrafficAnomaly[]>([]);
+  const [trafficRunning, setTrafficRunning] = useState<boolean>(false);
+  const [threatIntelStats, setThreatIntelStats] = useState<ThreatIntelStats | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [safeMode, setSafeMode] = useState<boolean>(false);
+  const [iaAvailable, setIaAvailable] = useState<boolean>(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // ============================================================
+  // FUNCIONES EXISTENTES (testConnection, fetchZombieStats, etc.)
+  // ============================================================
+  const testConnection = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/health`);
+      if (res.data.success) {
+        console.log('✅ Backend connected');
+        setBackendConnected(true);
+        return true;
+      }
+    } catch (err) {
+      console.error('❌ Backend connection failed:', err);
+      setBackendConnected(false);
+      setError('Cannot connect to backend. Make sure cargo run is running.');
+    }
+    return false;
+  };
+
+  const fetchZombieStats = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/api/scan`,
+        { scan_type: 'zombie_stats' },
+        { headers: { 'X-API-Token': API_TOKEN } }
+      );
+      let data = res.data.data;
+      if (typeof data === 'string') data = JSON.parse(data);
+      setZombieStats(data);
+    } catch (err) {
+      console.error('Failed to fetch zombie stats:', err);
+    }
+  };
+
+  const fetchZombieStatus = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/api/scan`,
+        { scan_type: 'zombie_status' },
+        { headers: { 'X-API-Token': API_TOKEN } }
+      );
+      let data = res.data.data;
+      if (typeof data === 'string') data = JSON.parse(data);
+      setZombieRunning(data.running === true);
+    } catch (err) {
+      console.error('Failed to fetch zombie status:', err);
+    }
+  };
+
+  // ============================================================
+  // NUEVAS FUNCIONES DE FETCH
+  // ============================================================
+  const fetchAdvancedHoneypotStats = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/api/scan`,
+        { scan_type: 'advanced_honeypot_stats' },
+        { headers: { 'X-API-Token': API_TOKEN } }
+      );
+      let data = res.data.data;
+      if (typeof data === 'string') data = JSON.parse(data);
+      setAdvancedHoneypotStats(data);
+    } catch (err) {
+      console.error('Failed to fetch advanced honeypot stats:', err);
+    }
+  };
+
+  const fetchAdvancedHoneypotStatus = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/api/scan`,
+        { scan_type: 'advanced_honeypot_status' },
+        { headers: { 'X-API-Token': API_TOKEN } }
+      );
+      let data = res.data.data;
+      if (typeof data === 'string') data = JSON.parse(data);
+      setAdvancedHoneypotRunning(data.running === true);
+    } catch (err) {
+      console.error('Failed to fetch advanced honeypot status:', err);
+    }
+  };
+
+  const fetchTrafficStats = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/api/scan`,
+        { scan_type: 'traffic_analyzer_stats' },
+        { headers: { 'X-API-Token': API_TOKEN } }
+      );
+      let data = res.data.data;
+      if (typeof data === 'string') data = JSON.parse(data);
+      setTrafficStats(data);
+    } catch (err) {
+      console.error('Failed to fetch traffic stats:', err);
+    }
+  };
+
+  const fetchTrafficAnomalies = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/api/scan`,
+        { scan_type: 'traffic_analyzer_anomalies' },
+        { headers: { 'X-API-Token': API_TOKEN } }
+      );
+      let data = res.data.data;
+      if (typeof data === 'string') data = JSON.parse(data);
+      setTrafficAnomalies(ensureArray<TrafficAnomaly>(data));
+    } catch (err) {
+      console.error('Failed to fetch traffic anomalies:', err);
+    }
+  };
+
+  const fetchTrafficStatus = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/api/scan`,
+        { scan_type: 'traffic_analyzer_status' },
+        { headers: { 'X-API-Token': API_TOKEN } }
+      );
+      let data = res.data.data;
+      if (typeof data === 'string') data = JSON.parse(data);
+      setTrafficRunning(data.running === true);
+    } catch (err) {
+      console.error('Failed to fetch traffic status:', err);
+    }
+  };
+
+  const fetchThreatIntelStats = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/api/scan`,
+        { scan_type: 'threat_intel_stats' },
+        { headers: { 'X-API-Token': API_TOKEN } }
+      );
+      let data = res.data.data;
+      if (typeof data === 'string') data = JSON.parse(data);
+      setThreatIntelStats(data);
+    } catch (err) {
+      console.error('Failed to fetch threat intel stats:', err);
+    }
+  };
+
+  const fetchSafeModeStatus = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/api/scan`,
+        { scan_type: 'ia_safe_mode_status' },
+        { headers: { 'X-API-Token': API_TOKEN } }
+      );
+      let data = res.data.data;
+      if (typeof data === 'string') data = JSON.parse(data);
+      setSafeMode(data.safe_mode === true);
+    } catch (err) {
+      console.error('Failed to fetch safe mode status:', err);
+    }
+  };
+
+  const toggleSafeMode = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/api/scan`,
+        { scan_type: 'ia_toggle_safe_mode' },
+        { headers: { 'X-API-Token': API_TOKEN } }
+      );
+      let data = res.data.data;
+      if (typeof data === 'string') data = JSON.parse(data);
+      setSafeMode(data.safe_mode === true);
+      addChatMessage('system', `Safe mode ${data.safe_mode ? 'ENABLED' : 'DISABLED'}. Actions are now ${data.safe_mode ? 'disabled' : 'allowed'}.`);
+    } catch (err) {
+      console.error('Failed to toggle safe mode:', err);
+      addChatMessage('system', 'Failed to toggle safe mode.');
+    }
+  };
+
+  const sendChatMessage = async (message: string) => {
+    if (!message.trim()) return;
+
+    addChatMessage('user', message);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const res = await axios.post(`${API_URL}/api/ia/ask`,
+        { question: message },
+        { headers: { 'X-API-Token': API_TOKEN } }
+      );
+
+      const data = res.data.data;
+      addChatMessage('assistant', data.response, data.action, data.action_result, data.model_used, data.safe_mode);
+    } catch (err) {
+      console.error('Chat error:', err);
+      addChatMessage('assistant', 'Error communicating with AI. Make sure the backend is running.');
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const addChatMessage = (role: 'user' | 'assistant' | 'system', content: string, action?: string, actionResult?: string, modelUsed?: string, safeMode?: boolean) => {
+    const newMessage: ChatMessage = {
+      id: Date.now().toString() + Math.random(),
+      role: role === 'system' ? 'assistant' : role,
+      content,
+      timestamp: new Date(),
+      action,
+      actionResult,
+      modelUsed,
+      safeMode
+    };
+    setChatMessages(prev => [...prev, newMessage]);
+  };
+
+  // ============================================================
+  // FETCH DATA PRINCIPAL
+  // ============================================================
+  const fetchData = async () => {
+    try {
+      if (!backendConnected) await testConnection();
+
+      const statsRes = await axios.get(`${API_URL}/api/memory/stats`, { headers: { 'X-API-Token': API_TOKEN } });
+      setStats(statsRes.data.data);
+
+      const eventsRes = await axios.get(`${API_URL}/api/events`, { headers: { 'X-API-Token': API_TOKEN } });
+      setEvents(ensureArray<SecurityEvent>(eventsRes.data.data));
+
+      const blockedRes = await axios.post(`${API_URL}/api/scan`, { scan_type: 'blocked_ips' }, { headers: { 'X-API-Token': API_TOKEN } });
+      let blockedData = blockedRes.data.data;
+      if (typeof blockedData === 'string') try { blockedData = JSON.parse(blockedData); } catch { blockedData = []; }
+      setBlockedIPs(ensureArray<BlockedIP>(blockedData));
+
+      const statusRes = await axios.post(`${API_URL}/api/scan`, { scan_type: 'honeypot_status' }, { headers: { 'X-API-Token': API_TOKEN } });
+      try { const statusData = JSON.parse(statusRes.data.data); setHoneypotStats(statusData); setHoneypotRunning(statusData.running === true); } catch { setHoneypotStats(null); setHoneypotRunning(false); }
+
+      const attacksRes = await axios.post(`${API_URL}/api/scan`, { scan_type: 'honeypot_attacks' }, { headers: { 'X-API-Token': API_TOKEN } });
+      let attacksData = attacksRes.data.data;
+      if (typeof attacksData === 'string') try { attacksData = JSON.parse(attacksData); } catch { attacksData = []; }
+      setHoneypotAttacks(ensureArray<HoneypotAttack>(attacksData));
+
+      try {
+        const arpRes = await axios.post(`${API_URL}/api/scan`, { scan_type: 'arp_quick' }, { headers: { 'X-API-Token': API_TOKEN } });
+        const arpData = JSON.parse(arpRes.data.data);
+        setAutoBlockStatus(arpData.stats?.auto_block === true);
+      } catch (err) { console.error('Failed to get auto-block status:', err); }
+
+      await fetchZombieStats();
+      await fetchZombieStatus();
+      await fetchAdvancedHoneypotStats();
+      await fetchAdvancedHoneypotStatus();
+      await fetchTrafficStats();
+      await fetchTrafficAnomalies();
+      await fetchTrafficStatus();
+      await fetchThreatIntelStats();
+      await fetchSafeModeStatus();
+
+      setError(null);
+    } catch (err) {
+      console.error('Fetch data error:', err);
+      setError('Failed to fetch data from backend. Check console for details.');
+    }
+  };
+
+  const fetchDevices = async (query: string = '192.168') => {
+    try {
+      const res = await axios.post(`${API_URL}/api/search`, { query }, { headers: { 'X-API-Token': API_TOKEN } });
+      setDevices(ensureArray<Device>(res.data.data));
+    } catch (err) {
+      console.error('Search failed:', err);
+    }
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      const connected = await testConnection();
+      if (connected) {
+        await fetchData();
+        await fetchDevices('192.168');
+      }
+      setLoading(false);
+    };
+    init();
+
+    const interval = setInterval(() => { if (backendConnected) fetchData(); }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const searchDevices = async () => { if (!searchQuery.trim()) return; await fetchDevices(searchQuery); };
+
+  // ============================================================
+  // OPERACIONES ASÍNCRONAS (runAsyncAction, runSyncAction existentes)
+  // ============================================================
+  const runAsyncAction = async (action: string, body?: any) => {
+    setActionLoading(action);
+    try {
+      const res = await axios.post(`${API_URL}/api/scan/async`, { scan_type: action, ...body }, { headers: { 'X-API-Token': API_TOKEN } });
+      const taskId = res.data.data.task_id;
+      console.log(`📋 Task ${taskId} started for ${action}`);
+
+      const interval = setInterval(async () => {
+        try {
+          const statusRes = await axios.get(`${API_URL}/api/task/${taskId}`, { headers: { 'X-API-Token': API_TOKEN } });
+          const taskStatus = statusRes.data.data;
+          if (taskStatus.status === 'completed') {
+            clearInterval(interval);
+            await fetchData();
+            await fetchDevices('192.168');
+            alert(`${action} completed successfully!`);
+            setActionLoading(null);
+          } else if (taskStatus.status === 'failed') {
+            clearInterval(interval);
+            alert(`${action} failed: ${taskStatus.error}`);
+            setActionLoading(null);
+          }
+        } catch (err) { console.error('Polling error:', err); }
+      }, 2000);
+
+      setTimeout(() => {
+        clearInterval(interval);
+        if (actionLoading === action) { setActionLoading(null); alert(`${action} timeout after 60 seconds`); }
+      }, 60000);
+    } catch (err) {
+      console.error(`${action} failed:`, err);
+      alert(`${action} failed. Check console for details.`);
+      setActionLoading(null);
+    }
+  };
+
+  const runSyncAction = async (action: string, body?: any) => {
+    setActionLoading(action);
+    try {
+      const res = await axios.post(`${API_URL}/api/scan`, { scan_type: action, ...body }, { headers: { 'X-API-Token': API_TOKEN } });
+      console.log(`${action} result:`, res.data);
+      await fetchData();
+      await fetchDevices('192.168');
+      alert(`${action} completed successfully!`);
+    } catch (err) {
+      console.error(`${action} failed:`, err);
+      alert(`${action} failed. Check console for details.`);
+    } finally { setActionLoading(null); }
+  };
+
+  // Zombie scans
+  const zombieScanFile = async () => {
+    if (!zombieFilePath.trim()) { alert('Please enter a file path'); return; }
+    setActionLoading('zombie_scan_file');
+    try {
+      const res = await axios.post(`${API_URL}/api/scan/async`, { scan_type: 'zombie_scan_file', file_path: zombieFilePath }, { headers: { 'X-API-Token': API_TOKEN } });
+      const taskId = res.data.data.task_id;
+      const interval = setInterval(async () => {
+        try {
+          const statusRes = await axios.get(`${API_URL}/api/task/${taskId}`, { headers: { 'X-API-Token': API_TOKEN } });
+          const taskStatus = statusRes.data.data;
+          if (taskStatus.status === 'completed') {
+            clearInterval(interval);
+            const result = JSON.parse(taskStatus.result);
+            alert(result.detected ? `🚨 MALWARE DETECTED!\nFile: ${result.file}\nReason: ${result.reason}\nScore: ${result.score}` : `✅ File clean: ${result.file}`);
+            await fetchZombieStats();
+            setZombieFilePath('');
+            setActionLoading(null);
+          } else if (taskStatus.status === 'failed') {
+            clearInterval(interval);
+            alert(`Zombie scan failed: ${taskStatus.error}`);
+            setActionLoading(null);
+          }
+        } catch (err) { console.error('Polling error:', err); }
+      }, 2000);
+      setTimeout(() => { clearInterval(interval); if (actionLoading === 'zombie_scan_file') { setActionLoading(null); alert('Zombie scan timeout after 60 seconds'); } }, 60000);
+    } catch (err) {
+      console.error('Zombie scan failed:', err);
+      alert('Zombie scan failed');
+      setActionLoading(null);
+    }
+  };
+
+  const zombieScanDir = async () => {
+    if (!zombieDirPath.trim()) { alert('Please enter a directory path'); return; }
+    setActionLoading('zombie_scan_dir');
+    try {
+      const res = await axios.post(`${API_URL}/api/scan/async`, { scan_type: 'zombie_scan_dir', dir_path: zombieDirPath, recursive: zombieRecursive }, { headers: { 'X-API-Token': API_TOKEN } });
+      const taskId = res.data.data.task_id;
+      const interval = setInterval(async () => {
+        try {
+          const statusRes = await axios.get(`${API_URL}/api/task/${taskId}`, { headers: { 'X-API-Token': API_TOKEN } });
+          const taskStatus = statusRes.data.data;
+          if (taskStatus.status === 'completed') {
+            clearInterval(interval);
+            const results = JSON.parse(taskStatus.result);
+            alert(`🔍 Scan complete!\nDetections: ${results.length}`);
+            await fetchZombieStats();
+            setZombieDirPath('');
+            setActionLoading(null);
+          } else if (taskStatus.status === 'failed') {
+            clearInterval(interval);
+            alert(`Zombie scan failed: ${taskStatus.error}`);
+            setActionLoading(null);
+          }
+        } catch (err) { console.error('Polling error:', err); }
+      }, 2000);
+      setTimeout(() => { clearInterval(interval); if (actionLoading === 'zombie_scan_dir') { setActionLoading(null); alert('Zombie scan timeout after 120 seconds'); } }, 120000);
+    } catch (err) {
+      console.error('Zombie scan failed:', err);
+      alert('Zombie scan failed');
+      setActionLoading(null);
+    }
+  };
+
+  // Honeypot controls
+  const startHoneypot = async () => { setActionLoading('honeypot_start'); await runAsyncAction('honeypot_start'); };
+  const stopHoneypot = async () => { setActionLoading('honeypot_stop'); await runAsyncAction('honeypot_stop'); };
+
+  // Zombie watcher
+  const startZombieWatcher = async () => { setActionLoading('zombie_start'); await runAsyncAction('zombie_start_watcher'); await fetchZombieStatus(); };
+  const startZombieDaemon = async () => { setActionLoading('zombie_daemon'); await runAsyncAction('zombie_start_daemon'); await fetchZombieStatus(); };
+  const stopZombieWatcher = async () => { setActionLoading('zombie_stop'); await runAsyncAction('zombie_stop_watcher'); await fetchZombieStatus(); };
+
+  // Advanced Honeypot controls
+  const startAdvancedHoneypot = async () => { await runSyncAction('advanced_honeypot_start'); await fetchAdvancedHoneypotStatus(); };
+  const stopAdvancedHoneypot = async () => { await runSyncAction('advanced_honeypot_stop'); await fetchAdvancedHoneypotStatus(); };
+
+  // Traffic Analyzer controls
+  const startTrafficAnalyzer = async () => { await runSyncAction('traffic_analyzer_start'); await fetchTrafficStatus(); };
+  const stopTrafficAnalyzer = async () => { await runSyncAction('traffic_analyzer_stop'); await fetchTrafficStatus(); };
+
+  // Threat Intel controls
+  const updateThreatIntel = async () => { await runSyncAction('threat_intel_update'); await fetchThreatIntelStats(); };
+
+  // IP blocking
+  const blockIP = async (ip: string) => {
+    setActionLoading(`block_${ip}`);
+    try {
+      const res = await axios.post(`${API_URL}/api/defender/block`, { ip }, { headers: { 'X-API-Token': API_TOKEN } });
+      console.log('Block result:', res.data);
+      await fetchData();
+      alert(`IP ${ip} blocked successfully!`);
+    } catch (err) { console.error(`Failed to block ${ip}:`, err); alert(`Failed to block ${ip}`); }
+    finally { setActionLoading(null); }
+  };
+
+  const unblockIP = async (ip: string) => {
+    setActionLoading(`unblock_${ip}`);
+    try {
+      const res = await axios.post(`${API_URL}/api/defender/unblock`, { ip }, { headers: { 'X-API-Token': API_TOKEN } });
+      console.log('Unblock result:', res.data);
+      await fetchData();
+      alert(`IP ${ip} unblocked successfully!`);
+    } catch (err) { console.error(`Failed to unblock ${ip}:`, err); alert(`Failed to unblock ${ip}`); }
+    finally { setActionLoading(null); }
+  };
+
+  const blockCustomIp = async () => {
+    if (!customIpToBlock.trim()) return;
+    setActionLoading(`block_${customIpToBlock}`);
+    try {
+      const res = await axios.post(`${API_URL}/api/defender/block`, { ip: customIpToBlock }, { headers: { 'X-API-Token': API_TOKEN } });
+      console.log('Block result:', res.data);
+      await fetchData();
+      alert(`IP ${customIpToBlock} blocked successfully!`);
+      setCustomIpToBlock('');
+    } catch (err) { console.error(`Failed to block ${customIpToBlock}:`, err); alert(`Failed to block ${customIpToBlock}`); }
+    finally { setActionLoading(null); }
+  };
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0a0f1e', color: '#00ff00', fontFamily: 'monospace' }}>
+        <div>🛡️ Loading Atlantis data...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: '20px', fontFamily: 'monospace', color: '#ff4444', backgroundColor: '#0a0f1e', minHeight: '100vh' }}>
+        <h1>❌ Error</h1>
+        <p>{error}</p>
+        <p>Make sure the backend is running: <code>cargo run</code> (respond 'y' to web interface)</p>
+        <p>Then refresh this page.</p>
+      </div>
+    );
+  }
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'critical': return '#ff4444';
+      case 'high': return '#ff8844';
+      case 'medium': return '#ffcc44';
+      case 'low': return '#44ff44';
+      default: return '#88ff88';
+    }
+  };
+
+  const getScoreColor = (score: number) => {
+    if (score >= 0.8) return '#ff4444';
+    if (score >= 0.5) return '#ff8844';
+    return '#44ff44';
+  };
+
+  return (
+    <div style={{ padding: '20px', fontFamily: 'monospace', maxWidth: '1400px', margin: '0 auto', backgroundColor: '#0a0f1e', color: '#00ff00', minHeight: '100vh' }}>
+      <h1 style={{ fontSize: '2em', marginBottom: '5px', color: '#00ff00', textShadow: '0 0 5px #00ff00', borderBottom: '1px solid #00ff00', display: 'inline-block' }}>🛡️ ATLANTIS-NEXUS</h1>
+      <h2 style={{ fontSize: '1em', color: '#88ff88', marginTop: 5, marginBottom: '20px', opacity: 0.8 }}>EL OJO 2.0 - ENTERPRISE EDITION [HACKER MODE]</h2>
+
+      {/* Botones principales */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '25px', flexWrap: 'wrap' }}>
+        <button onClick={() => runSyncAction('vigia')} disabled={!!actionLoading} style={{ padding: '12px 24px', backgroundColor: '#0a2f1a', color: '#00ff00', border: '1px solid #00ff00', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontFamily: 'monospace' }}>{actionLoading === 'vigia' ? '⏳ Scanning...' : '🔍 Scan Network'}</button>
+        <button onClick={() => runSyncAction('radar_devices')} disabled={!!actionLoading} style={{ padding: '12px 24px', backgroundColor: '#0a2f1a', color: '#00ff00', border: '1px solid #00ff00', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontFamily: 'monospace' }}>{actionLoading === 'radar_devices' ? '⏳ Running...' : '📡 Run Radar'}</button>
+        <button onClick={() => runAsyncAction('arp_quick')} disabled={!!actionLoading} style={{ padding: '12px 24px', backgroundColor: '#0a2f1a', color: '#00ff00', border: '1px solid #00ff00', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontFamily: 'monospace' }}>{actionLoading === 'arp_quick' ? '⏳ Detecting...' : '🕵️ ARP Scan'}</button>
+        <button onClick={startHoneypot} disabled={!!actionLoading || honeypotRunning} style={{ padding: '12px 24px', backgroundColor: honeypotRunning ? '#1a3a2a' : '#0a2f1a', color: '#00ff00', border: '1px solid #00ff00', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontFamily: 'monospace', opacity: honeypotRunning ? 0.6 : 1 }}>{actionLoading === 'honeypot_start' ? '⏳ Starting...' : '🍯 Start Honeypot'}</button>
+        <button onClick={stopHoneypot} disabled={!!actionLoading || !honeypotRunning} style={{ padding: '12px 24px', backgroundColor: '#3a1a1a', color: '#ff8888', border: '1px solid #ff4444', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontFamily: 'monospace', opacity: !honeypotRunning ? 0.6 : 1 }}>{actionLoading === 'honeypot_stop' ? '⏳ Stopping...' : '🛑 Stop Honeypot'}</button>
+      </div>
+
+      {/* Tarjetas de estadísticas */}
+      <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <div style={{ border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', flex: 1, minWidth: '180px', backgroundColor: '#0f1422', boxShadow: '0 0 10px rgba(0,255,0,0.1)' }}>
+          <h3 style={{ marginTop: 0, color: '#00ff00' }}>📊 Statistics</h3>
+          <p><strong>Total Devices:</strong> {stats?.total_devices || 0}</p>
+          <p><strong>Total Events:</strong> {stats?.total_events || 0}</p>
+          <p><strong>Auto-Block:</strong> {autoBlockStatus === null ? '⏳' : autoBlockStatus ? '✅ ACTIVATED' : '❌ DISABLED'}</p>
+          <p><strong>Honeypot:</strong> {honeypotRunning ? '✅ Running' : '⏸️ Stopped'}</p>
+          {honeypotStats && <p><strong>Honeypot Connections:</strong> {honeypotStats.total_connections || 0}</p>}
+          <p><strong>🧟 Zombie:</strong> {zombieRunning ? '✅ Running' : '⏸️ Stopped'}</p>
+          <p><strong>Malware Detections:</strong> {zombieStats?.total_detections || 0}</p>
+          <p><strong>🍯 Advanced Honeypots:</strong> {advancedHoneypotRunning ? '✅ Running' : '⏸️ Stopped'}</p>
+          <p><strong>📡 Traffic Analyzer:</strong> {trafficRunning ? '✅ Running' : '⏸️ Stopped'}</p>
+          <p><strong>🛡️ Threat Intel:</strong> {threatIntelStats?.total_ips || 0} IPs</p>
+        </div>
+
+        <div style={{ border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', flex: 1, minWidth: '180px', backgroundColor: '#0f1422' }}>
+          <h3 style={{ marginTop: 0, color: '#00ff00' }}>📋 Event Types</h3>
+          {stats?.event_counts && Object.keys(stats.event_counts).length > 0 ? (
+            Object.entries(stats.event_counts).map(([type, count]) => (<p key={type}><strong>{type}:</strong> {count}</p>))
+          ) : (<p>No events recorded yet</p>)}
+        </div>
+
+        <div style={{ border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', flex: 1, minWidth: '180px', backgroundColor: '#0f1422' }}>
+          <h3 style={{ marginTop: 0, color: '#00ff00' }}>🚫 Blocked IPs ({blockedIPs.length})</h3>
+          <div style={{ marginBottom: '12px', display: 'flex', gap: '8px' }}>
+            <input type="text" placeholder="Enter any IP (e.g., 1.2.3.4)" value={customIpToBlock} onChange={(e) => setCustomIpToBlock(e.target.value)} style={{ flex: 1, padding: '6px 10px', fontSize: '13px', borderRadius: '4px', border: '1px solid #00ff00', backgroundColor: '#0a0f1e', color: '#00ff00', fontFamily: 'monospace' }} />
+            <button onClick={blockCustomIp} disabled={!customIpToBlock.trim() || !!actionLoading} style={{ padding: '6px 12px', backgroundColor: '#3a1a1a', color: '#ff8888', border: '1px solid #ff4444', borderRadius: '4px', cursor: 'pointer' }}>Block</button>
+          </div>
+          {blockedIPs.length === 0 ? (<p style={{ fontSize: '13px', color: '#88ff88' }}>No blocked IPs</p>) : (
+            <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px' }}>
+              {blockedIPs.slice(0, 5).map((b, i) => (<li key={i} style={{ marginBottom: '4px' }}>{b.ip}<button onClick={() => unblockIP(b.ip)} style={{ marginLeft: '8px', padding: '2px 6px', fontSize: '11px', cursor: 'pointer', backgroundColor: '#1a3a2a', color: '#88ff88', border: '1px solid #00ff00', borderRadius: '3px' }}>Unblock</button></li>))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {/* Module Status */}
+      <div style={{ marginBottom: '20px', border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', backgroundColor: '#0f1422' }}>
+        <h3 style={{ marginTop: 0, color: '#00ff00' }}>🛡️ Module Status</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+          <div><strong>Vigía:</strong> <span style={{ color: '#44ff44' }}>✅ Active</span></div>
+          <div><strong>Radar:</strong> <span style={{ color: '#44ff44' }}>✅ Active</span></div>
+          <div><strong>ARP Detective:</strong> <span style={{ color: autoBlockStatus ? '#44ff44' : '#ff8844' }}>{autoBlockStatus === null ? '⏳' : (autoBlockStatus ? '✅ Active (auto ON)' : '⚠️ Active (auto OFF)')}</span></div>
+          <div><strong>Defender:</strong> <span style={{ color: '#44ff44' }}>✅ Active</span></div>
+          <div><strong>Honeypot:</strong> <span style={{ color: honeypotRunning ? '#44ff44' : '#888888' }}>{honeypotRunning ? '✅ Running' : '⏸️ Stopped'}</span></div>
+          <div><strong>🧟 Zombie:</strong> <span style={{ color: zombieRunning ? '#44ff44' : '#888888' }}>{zombieRunning ? '✅ Running' : '⏸️ Stopped'}</span></div>
+          <div><strong>🍯 Advanced Honeypots:</strong> <span style={{ color: advancedHoneypotRunning ? '#44ff44' : '#888888' }}>{advancedHoneypotRunning ? '✅ Running' : '⏸️ Stopped'}</span></div>
+          <div><strong>📡 Traffic Analyzer:</strong> <span style={{ color: trafficRunning ? '#44ff44' : '#888888' }}>{trafficRunning ? '✅ Running' : '⏸️ Stopped'}</span></div>
+        </div>
+      </div>
+
+      {/* ZOMBIE MODULE SECTION */}
+      <div style={{ marginBottom: '20px', border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', backgroundColor: '#0f1422' }}>
+        <h3 style={{ marginTop: 0, color: '#ff8844' }}>🧟 ZOMBIE MODULE - Malware Detection</h3>
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <button onClick={startZombieWatcher} disabled={!!actionLoading || zombieRunning} style={{ padding: '8px 16px', backgroundColor: zombieRunning ? '#1a3a2a' : '#2a3a1a', color: '#ff8844', border: '1px solid #ff8844', borderRadius: '6px', cursor: 'pointer', fontFamily: 'monospace' }}>{actionLoading === 'zombie_start' ? '⏳ Starting...' : '🧟 Start Watcher'}</button>
+          <button onClick={startZombieDaemon} disabled={!!actionLoading || zombieRunning} style={{ padding: '8px 16px', backgroundColor: zombieRunning ? '#1a3a2a' : '#2a3a1a', color: '#ff8844', border: '1px solid #ff8844', borderRadius: '6px', cursor: 'pointer', fontFamily: 'monospace' }}>{actionLoading === 'zombie_daemon' ? '⏳ Starting...' : '🧟 Start Daemon'}</button>
+          <button onClick={stopZombieWatcher} disabled={!!actionLoading || !zombieRunning} style={{ padding: '8px 16px', backgroundColor: '#3a1a1a', color: '#ff8888', border: '1px solid #ff4444', borderRadius: '6px', cursor: 'pointer', fontFamily: 'monospace' }}>{actionLoading === 'zombie_stop' ? '⏳ Stopping...' : '🛑 Stop Zombie'}</button>
+        </div>
+
+        <div style={{ marginBottom: '15px' }}>
+          <h4 style={{ color: '#ff8844', marginBottom: '8px' }}>📄 Scan File</h4>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <input type="text" placeholder="File path (e.g., /tmp/malicious.py)" value={zombieFilePath} onChange={(e) => setZombieFilePath(e.target.value)} style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #ff8844', backgroundColor: '#0a0f1e', color: '#ff8844', fontFamily: 'monospace' }} />
+            <button onClick={zombieScanFile} disabled={!!actionLoading} style={{ padding: '8px 16px', backgroundColor: '#2a3a1a', color: '#ff8844', border: '1px solid #ff8844', borderRadius: '6px', cursor: 'pointer' }}>{actionLoading === 'zombie_scan_file' ? '⏳ Scanning...' : '🔍 Scan'}</button>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '15px' }}>
+          <h4 style={{ color: '#ff8844', marginBottom: '8px' }}>📁 Scan Directory</h4>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
+            <input type="text" placeholder="Directory path (e.g., /tmp)" value={zombieDirPath} onChange={(e) => setZombieDirPath(e.target.value)} style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #ff8844', backgroundColor: '#0a0f1e', color: '#ff8844', fontFamily: 'monospace' }} />
+            <button onClick={zombieScanDir} disabled={!!actionLoading} style={{ padding: '8px 16px', backgroundColor: '#2a3a1a', color: '#ff8844', border: '1px solid #ff8844', borderRadius: '6px', cursor: 'pointer' }}>{actionLoading === 'zombie_scan_dir' ? '⏳ Scanning...' : '🔍 Scan'}</button>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={zombieRecursive} onChange={(e) => setZombieRecursive(e.target.checked)} /><span style={{ color: '#88ff88', fontSize: '12px' }}>Scan recursively (include subdirectories)</span></label>
+        </div>
+
+        <h4 style={{ color: '#ff8844', marginTop: '15px' }}>🚨 Malware Detections ({zombieStats?.total_detections || 0})</h4>
+        {!zombieStats?.recent_detections || zombieStats.recent_detections.length === 0 ? (<p style={{ color: '#88ff88' }}>No malware detections yet</p>) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead><tr style={{ borderBottom: '1px solid #ff8844', textAlign: 'left' }}><th style={{ padding: '8px' }}>Time</th><th style={{ padding: '8px' }}>File</th><th style={{ padding: '8px' }}>Reason</th><th style={{ padding: '8px' }}>Score</th><th style={{ padding: '8px' }}>Status</th> </tr></thead>
+              <tbody>{zombieStats.recent_detections.slice(0, 20).map((det, idx) => (<tr key={idx} style={{ borderBottom: '1px solid #2a3a2a' }}><td style={{ padding: '8px' }}>{new Date(det.timestamp).toLocaleString()}</td><td style={{ padding: '8px', fontFamily: 'monospace', fontSize: '11px' }}>{det.file.split('/').pop()}</td><td style={{ padding: '8px' }}>{det.reason}</td><td style={{ padding: '8px', color: getScoreColor(det.score), fontWeight: 'bold' }}>{(det.score * 100).toFixed(0)}%</td><td style={{ padding: '8px', color: det.quarantined ? '#44ff44' : '#ff8844' }}>{det.quarantined ? '🔒 Quarantined' : '⚠️ Detected'}</td></tr>))}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ADVANCED HONEYPOTS SECTION */}
+      <div style={{ marginBottom: '20px', border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', backgroundColor: '#0f1422' }}>
+        <h3 style={{ marginTop: 0, color: '#ff8844' }}>🍯 ADVANCED HONEYPOTS (HTTP, FTP, SMB)</h3>
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <button onClick={startAdvancedHoneypot} disabled={!!actionLoading || advancedHoneypotRunning} style={{ padding: '8px 16px', backgroundColor: advancedHoneypotRunning ? '#1a3a2a' : '#2a3a1a', color: '#ff8844', border: '1px solid #ff8844', borderRadius: '6px', cursor: 'pointer', fontFamily: 'monospace' }}>{actionLoading === 'advanced_honeypot_start' ? '⏳ Starting...' : '🍯 Start Advanced Honeypots'}</button>
+          <button onClick={stopAdvancedHoneypot} disabled={!!actionLoading || !advancedHoneypotRunning} style={{ padding: '8px 16px', backgroundColor: '#3a1a1a', color: '#ff8888', border: '1px solid #ff4444', borderRadius: '6px', cursor: 'pointer', fontFamily: 'monospace' }}>{actionLoading === 'advanced_honeypot_stop' ? '⏳ Stopping...' : '🛑 Stop Advanced Honeypots'}</button>
+        </div>
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+          <div><strong>HTTP Attacks:</strong> {advancedHoneypotStats.http}</div>
+          <div><strong>FTP Attacks:</strong> {advancedHoneypotStats.ftp}</div>
+          <div><strong>SMB Attacks:</strong> {advancedHoneypotStats.smb}</div>
+        </div>
+      </div>
+
+      {/* TRAFFIC ANALYZER SECTION */}
+      <div style={{ marginBottom: '20px', border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', backgroundColor: '#0f1422' }}>
+        <h3 style={{ marginTop: 0, color: '#00ccff' }}>📡 TRAFFIC ANALYZER</h3>
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <button onClick={startTrafficAnalyzer} disabled={!!actionLoading || trafficRunning} style={{ padding: '8px 16px', backgroundColor: trafficRunning ? '#1a3a2a' : '#2a3a1a', color: '#00ccff', border: '1px solid #00ccff', borderRadius: '6px', cursor: 'pointer', fontFamily: 'monospace' }}>{actionLoading === 'traffic_analyzer_start' ? '⏳ Starting...' : '📡 Start Traffic Analyzer'}</button>
+          <button onClick={stopTrafficAnalyzer} disabled={!!actionLoading || !trafficRunning} style={{ padding: '8px 16px', backgroundColor: '#3a1a1a', color: '#ff8888', border: '1px solid #ff4444', borderRadius: '6px', cursor: 'pointer', fontFamily: 'monospace' }}>{actionLoading === 'traffic_analyzer_stop' ? '⏳ Stopping...' : '🛑 Stop Traffic Analyzer'}</button>
+        </div>
+        {trafficStats && (
+          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '15px' }}>
+            <div><strong>Total Connections:</strong> {trafficStats.total_connections}</div>
+            <div><strong>Suspicious IPs:</strong> {trafficStats.suspicious_ips}</div>
+            <div><strong>Threat Matches:</strong> {trafficStats.threat_matches}</div>
+            <div><strong>Active Connections:</strong> {trafficStats.active_connections}</div>
+          </div>
+        )}
+        <h4 style={{ color: '#00ccff' }}>🚨 Traffic Anomalies ({trafficAnomalies.length})</h4>
+        {trafficAnomalies.length === 0 ? (<p>No traffic anomalies detected</p>) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead><tr style={{ borderBottom: '1px solid #00ccff', textAlign: 'left' }}><th style={{ padding: '8px' }}>Time</th><th style={{ padding: '8px' }}>IP</th><th style={{ padding: '8px' }}>Port</th><th style={{ padding: '8px' }}>Reasons</th><th style={{ padding: '8px' }}>Severity</th> </tr></thead>
+              <tbody>{trafficAnomalies.slice(0, 10).map((a, idx) => (<tr key={idx} style={{ borderBottom: '1px solid #2a3a2a' }}><td style={{ padding: '8px' }}>{new Date(a.timestamp).toLocaleString()}</td><td style={{ padding: '8px' }}>{a.ip}</td><td style={{ padding: '8px' }}>{a.port}</td><td style={{ padding: '8px' }}>{a.reasons.join(', ')}</td><td style={{ padding: '8px', color: a.severity === 'critical' ? '#ff4444' : '#ff8844' }}>{a.severity}</td></tr>))}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* THREAT INTELLIGENCE SECTION */}
+      <div style={{ marginBottom: '20px', border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', backgroundColor: '#0f1422' }}>
+        <h3 style={{ marginTop: 0, color: '#ff88ff' }}>🛡️ THREAT INTELLIGENCE</h3>
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <button onClick={updateThreatIntel} disabled={!!actionLoading} style={{ padding: '8px 16px', backgroundColor: '#2a3a1a', color: '#ff88ff', border: '1px solid #ff88ff', borderRadius: '6px', cursor: 'pointer', fontFamily: 'monospace' }}>{actionLoading === 'threat_intel_update' ? '⏳ Updating...' : '🔄 Update Threat Feeds'}</button>
+        </div>
+        {threatIntelStats && (
+          <div>
+            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '15px' }}>
+              <div><strong>Total Malicious IPs:</strong> {threatIntelStats.total_ips}</div>
+              <div><strong>Blocked by Firewall:</strong> {threatIntelStats.blocked_count}</div>
+              <div><strong>Last Update:</strong> {threatIntelStats.last_update ? new Date(threatIntelStats.last_update).toLocaleString() : 'Never'}</div>
+            </div>
+            {Object.keys(threatIntelStats.by_source).length > 0 && (
+              <div style={{ marginBottom: '10px' }}><strong>By Source:</strong> {Object.entries(threatIntelStats.by_source).map(([s, c]) => `${s}: ${c}`).join(', ')}</div>
+            )}
+            {Object.keys(threatIntelStats.by_category).length > 0 && (
+              <div><strong>By Category:</strong> {Object.entries(threatIntelStats.by_category).map(([c, n]) => `${c}: ${n}`).join(', ')}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* AI CEREBRO SECTION */}
+      <div style={{ marginBottom: '20px', border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', backgroundColor: '#0f1422' }}>
+        <h3 style={{ marginTop: 0, color: '#88ff88' }}>🧠 AI CEREBRO - Security Assistant</h3>
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button onClick={toggleSafeMode} disabled={!!actionLoading} style={{ padding: '8px 16px', backgroundColor: safeMode ? '#3a1a1a' : '#2a3a1a', color: safeMode ? '#ff8888' : '#88ff88', border: `1px solid ${safeMode ? '#ff4444' : '#88ff88'}`, borderRadius: '6px', cursor: 'pointer', fontFamily: 'monospace' }}>
+            {safeMode ? '🔒 Safe Mode (Actions Disabled)' : '⚡ Active Mode (Actions Allowed)'}
+          </button>
+          <span style={{ fontSize: '12px', color: '#888' }}>In safe mode, the AI only reads data. In active mode, it can execute commands like blocking IPs.</span>
+        </div>
+
+        <div style={{ height: '400px', overflowY: 'auto', border: '1px solid #00ff00', borderRadius: '8px', backgroundColor: '#0a0f1e', marginBottom: '15px', padding: '10px' }}>
+          {chatMessages.length === 0 && <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>Ask me about your network security. I can answer questions and execute actions when active mode is on.</p>}
+          {chatMessages.map((msg) => (
+            <div key={msg.id} style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+              <div style={{ maxWidth: '80%', padding: '8px 12px', borderRadius: '12px', backgroundColor: msg.role === 'user' ? '#0a2f1a' : '#1a2a3a', border: `1px solid ${msg.role === 'user' ? '#00ff00' : '#88ff88'}` }}>
+                <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>{msg.role === 'user' ? 'You' : 'Atlantis AI'} {msg.modelUsed && <span style={{ fontSize: '10px' }}>({msg.modelUsed})</span>}</div>
+                <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
+                {msg.action && <div style={{ fontSize: '11px', color: '#ff8844', marginTop: '6px', borderTop: '1px solid #333', paddingTop: '4px' }}>🔧 Action: {msg.action}<br/>📋 Result: {msg.actionResult}</div>}
+              </div>
+              <div style={{ fontSize: '10px', color: '#555', marginTop: '4px' }}>{msg.timestamp.toLocaleTimeString()}</div>
+            </div>
+          ))}
+          {chatLoading && <div style={{ color: '#888', padding: '8px' }}>🧠 Thinking...</div>}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && sendChatMessage(chatInput)} placeholder={safeMode ? "Ask a question (read-only mode)..." : "Ask a question or give a command..."} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #00ff00', backgroundColor: '#0a0f1e', color: '#00ff00', fontFamily: 'monospace' }} />
+          <button onClick={() => sendChatMessage(chatInput)} disabled={chatLoading || !chatInput.trim()} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: '6px', border: '1px solid #00ff00', backgroundColor: '#0a2f1a', color: '#00ff00', fontFamily: 'monospace' }}>Send</button>
+        </div>
+      </div>
+
+      {/* Search Devices */}
+      <div style={{ marginBottom: '20px', border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', backgroundColor: '#0f1422' }}>
+        <h3 style={{ marginTop: 0, color: '#00ff00' }}>🔍 Search Devices</h3>
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+          <input type="text" placeholder="IP, MAC, vendor..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && searchDevices()} style={{ flex: 1, padding: '10px', fontSize: '14px', borderRadius: '6px', border: '1px solid #00ff00', backgroundColor: '#0a0f1e', color: '#00ff00', fontFamily: 'monospace' }} />
+          <button onClick={searchDevices} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: '6px', border: '1px solid #00ff00', backgroundColor: '#0a2f1a', color: '#00ff00', fontFamily: 'monospace' }}>Search</button>
+          <button onClick={() => fetchDevices('192.168')} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: '6px', border: '1px solid #00ff00', backgroundColor: '#0a2f1a', color: '#00ff00', fontFamily: 'monospace' }}>Show All</button>
+        </div>
+        <h3 style={{ color: '#00ff00' }}>📡 Known Devices ({devices.length})</h3>
+        {devices.length === 0 ? (<p>No devices found. Run Scan Network first.</p>) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+              <thead><tr style={{ borderBottom: '1px solid #00ff00', textAlign: 'left' }}><th style={{ padding: '10px' }}>IP</th><th style={{ padding: '10px' }}>MAC</th><th style={{ padding: '10px' }}>Vendor</th><th style={{ padding: '10px' }}>Last Seen</th><th style={{ padding: '10px' }}>Actions</th> </tr></thead>
+              <tbody>{devices.map((device, idx) => (<tr key={idx} style={{ borderBottom: '1px solid #2a3a2a' }}><td style={{ padding: '10px' }}>{device.ip}</td><td style={{ padding: '10px', fontFamily: 'monospace' }}>{device.mac}</td><td style={{ padding: '10px' }}>{device.vendor}</td><td style={{ padding: '10px' }}>{new Date(device.last_seen).toLocaleString()}</td><td style={{ padding: '10px' }}><button onClick={() => blockIP(device.ip)} style={{ padding: '4px 10px', fontSize: '12px', cursor: 'pointer', backgroundColor: '#3a1a1a', color: '#ff8888', border: '1px solid #ff4444', borderRadius: '4px' }}>Block IP</button></td></tr>))}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Recent Events */}
+      <div style={{ marginBottom: '20px', border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', backgroundColor: '#0f1422' }}>
+        <h3 style={{ marginTop: 0, color: '#00ff00' }}>🚨 Recent Events ({events.length})</h3>
+        {events.length === 0 ? (<p>No events recorded yet</p>) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead><tr style={{ borderBottom: '1px solid #00ff00', textAlign: 'left' }}><th style={{ padding: '8px' }}>Time</th><th style={{ padding: '8px' }}>IP</th><th style={{ padding: '8px' }}>Type</th><th style={{ padding: '8px' }}>Description</th><th style={{ padding: '8px' }}>Severity</th> </tr></thead>
+              <tbody>{events.slice(0, 20).map((event, idx) => (<tr key={idx} style={{ borderBottom: '1px solid #2a3a2a' }}><td style={{ padding: '8px' }}>{new Date(event.timestamp).toLocaleString()}</td><td style={{ padding: '8px' }}>{event.device_ip}</td><td style={{ padding: '8px' }}>{event.event_type}</td><td style={{ padding: '8px' }}>{event.description}</td><td style={{ padding: '8px', color: getSeverityColor(event.severity), fontWeight: 'bold' }}>{event.severity.toUpperCase()}</td></tr>))}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Honeypot Attacks */}
+      <div style={{ marginBottom: '20px', border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', backgroundColor: '#0f1422' }}>
+        <h3 style={{ marginTop: 0, color: '#00ff00' }}>🍯 Honeypot Attacks ({honeypotAttacks.length})</h3>
+        {honeypotAttacks.length === 0 ? (<p>No attacks recorded yet</p>) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead><tr style={{ borderBottom: '1px solid #00ff00', textAlign: 'left' }}><th style={{ padding: '8px' }}>Time</th><th style={{ padding: '8px' }}>IP</th><th style={{ padding: '8px' }}>Username</th><th style={{ padding: '8px' }}>Password</th><th style={{ padding: '8px' }}>Port</th> </tr></thead>
+              <tbody>{honeypotAttacks.slice(0, 20).map((attack, idx) => (<tr key={idx} style={{ borderBottom: '1px solid #2a3a2a' }}><td style={{ padding: '8px' }}>{new Date(attack.timestamp).toLocaleString()}</td><td style={{ padding: '8px' }}>{attack.ip}</td><td style={{ padding: '8px' }}>{attack.username}</td><td style={{ padding: '8px', fontFamily: 'monospace' }}>{attack.password}</td><td style={{ padding: '8px' }}>{attack.port}</td></tr>))}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* API Status */}
+      <div style={{ border: '1px solid #00ff00', padding: '15px', borderRadius: '12px', backgroundColor: '#0a2f1a', textAlign: 'center' }}>
+        <p style={{ margin: 0 }}><strong>🔗 API Status:</strong> {backendConnected ? '✅ Connected' : '❌ Disconnected'} | <strong>Token:</strong> ✅ Configured | <strong>🧟 Zombie:</strong> {zombieRunning ? '✅ Active' : '⏸️ Inactive'} | <strong>🍯 Advanced:</strong> {advancedHoneypotRunning ? '✅ Active' : '⏸️ Inactive'} | <strong>📡 Traffic:</strong> {trafficRunning ? '✅ Active' : '⏸️ Inactive'}</p>
+      </div>
+    </div>
+  );
+}
+
+export default App;
