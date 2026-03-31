@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-03-24T16:13:55.066593",
+  "rules": [
+    {
+      "name": "zip_corrupt_header",
+      "type": "zip",
+      "description": "ZIP con cabecera corrupta",
+      "severity": "high"
+    },
+    {
+      "name": "image_steganography",
+      "type": "image",
+      "description": "Posible payload oculto en imagen",
+      "severity": "medium"
+    },
+    {
+      "name": "obfuscated_script",
+      "type": "script",
+      "description": "Script ofuscado",
+      "severity": "high"
+    },
+    {
+      "name": "macro_document",
+      "type": "document",
+      "description": "Documento con macros",
+      "severity": "high"
+    }
+  ]
+}

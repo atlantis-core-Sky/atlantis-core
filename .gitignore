@@ -1,0 +1,45 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg-info/
+venv/
+atlantis-venv/
+
+# Data (keep structure but ignore content)
+data/memory/*.json
+data/defensa/*.json
+data/advanced_honeypot_logs/*.jsonl
+data/zombie_logs/*.jsonl
+data/traffic_logs/*.jsonl
+data/threat_intel/*.db
+data/anomaly_data/*.jsonl
+data/anomaly_data/model/
+!data/memory/.gitkeep
+!data/defensa/.gitkeep
+!data/advanced_honeypot_logs/.gitkeep
+!data/zombie_logs/.gitkeep
+!data/traffic_logs/.gitkeep
+!data/threat_intel/.gitkeep
+!data/anomaly_data/.gitkeep
+
+# Frontend
+atlantis-ui/node_modules/
+atlantis-ui/dist/
+atlantis-ui/.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
