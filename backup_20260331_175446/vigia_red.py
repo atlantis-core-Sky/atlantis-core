@@ -2,16 +2,16 @@
 # -*- coding: utf-8 -*-
 
 """
-ATLANTIS VIGÍA v5.8 - RELATIVE PATHS
-• Automatically detects the network where it is connected
-• Gets real MAC addresses of devices (ping + arp -n)
-• Resolves device names (Nothing Phone, Samsung TV, etc.)
-• Works on any WiFi (home, work, café, hotel)
-• RELATIVE PATHS to the Atlantis executable
-• Automatically detects if running in WSL or Windows
-• Uses sudo internally with full nmap path
-• In JSON mode, prints NO debug text
-• Input sanitization to avoid command injection
+EL VIGÍA DE ATLANTIS v5.8 - RUTAS RELATIVAS
+• Detecta automáticamente la red donde está conectado
+• Obtiene MACs reales de dispositivos (ping + arp -n)
+• Resuelve nombres de dispositivos (Nothing Phone, Samsung TV, etc.)
+• Funciona en cualquier WiFi (casa, trabajo, café, hotel)
+• RUTAS RELATIVAS al ejecutable de Atlantis
+• Detecta automáticamente si está en WSL o Windows
+• Usa sudo internamente con ruta completa de nmap
+• En modo JSON, NO imprime texto de depuración
+• Sanitización de inputs para evitar inyección de comandos
 """
 
 import json
@@ -27,10 +27,10 @@ from pathlib import Path
 from datetime import datetime
 
 # ============================================================
-# BASE PATH DETECTION
+# DETECCIÓN DE RUTA BASE
 # ============================================================
 def get_base_path():
-    """Gets the base path of the Atlantis executable"""
+    """Obtiene la ruta base del ejecutable de Atlantis"""
     try:
         import subprocess as sp
         result = sp.run(["which", "atlantis"], capture_output=True, text=True)
@@ -39,41 +39,41 @@ def get_base_path():
             return exe_path.parent
     except:
         pass
-
-    # Fallback: use script location
+    
+    # Fallback: usar la ubicación del script
     script_dir = Path(__file__).parent.absolute()
-    # Go up 3 levels: scripts/defensa/ -> atlantis/
+    # Subir 3 niveles: scripts/defensa/ -> atlantis/
     return script_dir.parent.parent
 
 # ============================================================
-# CONFIGURATION - RELATIVE PATHS
+# CONFIGURACIÓN - RUTAS RELATIVAS
 # ============================================================
 BASE_PATH = get_base_path()
 DATA_DIR = BASE_PATH / "data"
 DEFENSA_DIR = DATA_DIR / "defensa"
 
-# Create directories
+# Crear directorios
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DEFENSA_DIR.mkdir(parents=True, exist_ok=True)
 
-# Data files
-BASELINE_FILE = DEFENSA_DIR / "baseline.json"
-LOG_FILE = DEFENSA_DIR / "vigia_log.txt"
-VENDOR_FILE = DEFENSA_DIR / "vendors.json"
+# Archivos de datos
+ARCHIVO_LINEA_BASE = DEFENSA_DIR / "linea_base.json"
+ARCHIVO_LOG = DEFENSA_DIR / "vigia_log.txt"
+ARCHIVO_FABRICANTES = DEFENSA_DIR / "fabricantes.json"
 
 print(f"📁 Data directory: {DATA_DIR}", file=sys.stderr)
 
 # ============================================================
-# INPUT SANITIZATION
+# SANITIZACIÓN DE INPUTS
 # ============================================================
 def sanitize_input(input_str):
-    """Sanitize input to avoid command injection"""
+    """Sanitiza entrada para evitar inyección de comandos"""
     if not input_str:
         return ""
     return shlex.quote(str(input_str))
 
 # ============================================================
-# WINDOWS ENCODING FIX
+# FIX DE ENCODING PARA WINDOWS
 # ============================================================
 if platform.system() == "Windows":
     import io
@@ -81,10 +81,10 @@ if platform.system() == "Windows":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # ============================================================
-# WSL DETECTION
+# DETECCIÓN DE WSL
 # ============================================================
 def is_wsl():
-    """Detects if the script is running inside WSL."""
+    """Detecta si el script se está ejecutando dentro de WSL."""
     try:
         release = platform.uname().release.lower()
         return 'microsoft' in release or 'wsl' in release
@@ -92,10 +92,10 @@ def is_wsl():
         return False
 
 # ============================================================
-# ENVIRONMENT DETECTION
+# DETECCIÓN DE ENTORNO
 # ============================================================
 def get_environment():
-    """Returns the current environment: 'wsl', 'windows', or 'linux'."""
+    """Devuelve el entorno actual: 'wsl', 'windows', o 'linux'."""
     if is_wsl():
         return "wsl"
     elif platform.system() == "Windows":
@@ -104,10 +104,10 @@ def get_environment():
         return "linux"
 
 # ============================================================
-# HOSTNAME RESOLUTION
+# RESOLUCIÓN DE HOSTNAME
 # ============================================================
 def resolve_hostname(ip):
-    """Attempts to resolve the device name via reverse DNS"""
+    """Intenta resolver el nombre del dispositivo por DNS inverso"""
     try:
         hostname = socket.gethostbyaddr(ip)[0]
         if '.' in hostname:
@@ -117,10 +117,10 @@ def resolve_hostname(ip):
         return None
 
 # ============================================================
-# GET REAL MAC FROM IP
+# OBTENER MAC REAL DE UNA IP
 # ============================================================
 def get_mac_from_ip(ip):
-    """Gets the real MAC address of an IP using ping + arp -n"""
+    """Obtiene la MAC real de una IP usando ping + arp -n"""
     mac = "00:00:00:00:00:00"
     try:
         subprocess.run(["ping", "-c", "1", "-W", "1", ip], capture_output=True, timeout=2)
@@ -137,17 +137,17 @@ def get_mac_from_ip(ip):
     return mac
 
 # ============================================================
-# AUTOMATIC NETWORK DETECTION
+# DETECCIÓN AUTOMÁTICA DE RED
 # ============================================================
-def detect_current_network():
-    """Detects the current network automatically (home, work, café, hotel)"""
+def detectar_red_actual():
+    """Detecta la red actual automáticamente (casa, trabajo, café, hotel)"""
     try:
         import ipaddress
         import netifaces
 
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
+        ip_local = s.getsockname()[0]
         s.close()
 
         gateways = netifaces.gateways()
@@ -155,20 +155,20 @@ def detect_current_network():
         addrs = netifaces.ifaddresses(iface)
         netmask = addrs[netifaces.AF_INET][0]['netmask']
 
-        network = ipaddress.IPv4Network(f"{local_ip}/{netmask}", strict=False)
-        return str(network)
+        red = ipaddress.IPv4Network(f"{ip_local}/{netmask}", strict=False)
+        return str(red)
     except Exception as e:
         return "192.168.1.0/24"
 
 # ============================================================
-# VENDOR DATABASE (MAC -> Company)
+# BASE DE DATOS DE FABRICANTES (MAC -> Empresa)
 # ============================================================
-def load_vendors():
-    if VENDOR_FILE.exists():
-        with open(VENDOR_FILE, 'r', encoding='utf-8') as f:
+def cargar_fabricantes():
+    if ARCHIVO_FABRICANTES.exists():
+        with open(ARCHIVO_FABRICANTES, 'r', encoding='utf-8') as f:
             return json.load(f)
     else:
-        vendors = {
+        fabricantes = {
             "00:00:0C": "Cisco", "00:14:22": "Dell", "00:17:F2": "Apple",
             "00:1E:52": "Apple", "00:1F:F3": "Apple", "00:21:E9": "Samsung",
             "00:23:76": "HP", "00:25:00": "Apple", "00:26:BB": "Apple",
@@ -195,24 +195,24 @@ def load_vendors():
             "EC:8E:AE": "Intel", "F0:6E:0B": "Intel", "F4:69:42": "Askey Computer",
             "F4:6B:EF": "Intel", "F8:32:E4": "Intel", "FC:15:B4": "Intel",
         }
-        with open(VENDOR_FILE, 'w', encoding='utf-8') as f:
-            json.dump(vendors, f, indent=2, ensure_ascii=False)
-        return vendors
+        with open(ARCHIVO_FABRICANTES, 'w', encoding='utf-8') as f:
+            json.dump(fabricantes, f, indent=2, ensure_ascii=False)
+        return fabricantes
 
-VENDORS = load_vendors()
+FABRICANTES = cargar_fabricantes()
 
-def get_vendor(mac):
-    if not mac or mac == "Unknown" or mac == "00:00:00:00:00:00":
-        return "Unknown"
-    prefix = mac.upper()[:8]
-    if prefix in VENDORS:
-        return VENDORS[prefix]
-    short_prefix = mac.upper()[:5]
-    if short_prefix in VENDORS:
-        return VENDORS[short_prefix]
-    return "Unknown"
+def obtener_fabricante(mac):
+    if not mac or mac == "Desconocida" or mac == "00:00:00:00:00:00":
+        return "Desconocido"
+    prefijo = mac.upper()[:8]
+    if prefijo in FABRICANTES:
+        return FABRICANTES[prefijo]
+    prefijo_corto = mac.upper()[:5]
+    if prefijo_corto in FABRICANTES:
+        return FABRICANTES[prefijo_corto]
+    return "Desconocido"
 
-def get_my_ip():
+def obtener_mi_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -223,79 +223,79 @@ def get_my_ip():
         return "0.0.0.0"
 
 # ============================================================
-# AUTOMATICALLY DETECTED LOCAL NETWORK
+# RED LOCAL DETECTADA AUTOMÁTICAMENTE
 # ============================================================
-LOCAL_NETWORK = detect_current_network()
+RED_LOCAL = detectar_red_actual()
 
 # ============================================================
-# SCAN WITH NMAP (VERSION WITH REAL MACs AND HOSTNAMES)
+# ESCANEO CON NMAP (VERSIÓN CON MACs Y HOSTNAMES REALES)
 # ============================================================
-def scan_with_nmap(network=LOCAL_NETWORK, quiet=False):
+def escanear_con_nmap(red=RED_LOCAL, quiet=False):
     env = get_environment()
 
     if not quiet:
-        print(f"🔍 Scanning network {network} with Nmap...")
-        print(f"   📡 Detected environment: {env.upper()}")
+        print(f"🔍 Escaneando red {red} con Nmap...")
+        print(f"   📡 Entorno detectado: {env.upper()}")
 
     try:
-        sanitized_network = sanitize_input(network)
+        red_sanitizada = sanitize_input(red)
         hosts = []
         ip_list = []
 
         if env == "wsl":
-            cmd = ["sudo", "/usr/bin/nmap", "-sn", "-PE", "-PS443,4070", "-PA80", "-PP", sanitized_network]
+            cmd = ["sudo", "/usr/bin/nmap", "-sn", "-PE", "-PS443,4070", "-PA80", "-PP", red_sanitizada]
             if not quiet:
-                print("   🌐 Using advanced mode for WSL")
+                print("   🌐 Usando modo avanzado para WSL")
         else:
-            cmd = ["nmap", "-sn", sanitized_network]
+            cmd = ["nmap", "-sn", red_sanitizada]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
-        for line in result.stdout.split('\n'):
-            if "Nmap scan report for" in line:
-                parts = line.split()
-                candidate_ip = parts[-1].strip('()')
-                if candidate_ip and '.' in candidate_ip:
-                    current_ip = candidate_ip
-                    my_ip = get_my_ip()
-                    if current_ip != my_ip:
-                        ip_list.append(current_ip)
+        for linea in resultado.stdout.split('\n'):
+            if "Nmap scan report for" in linea:
+                partes = linea.split()
+                ip_candidata = partes[-1].strip('()')
+                if ip_candidata and '.' in ip_candidata:
+                    ip_actual = ip_candidata
+                    mi_ip = obtener_mi_ip()
+                    if ip_actual != mi_ip:
+                        ip_list.append(ip_actual)
 
         if not quiet:
-            print(f"   📍 Found {len(ip_list)} active IPs")
+            print(f"   📍 Encontradas {len(ip_list)} IPs activas")
 
         for ip in ip_list:
             mac = get_mac_from_ip(ip)
             hostname = resolve_hostname(ip)
-            vendor = get_vendor(mac) if mac != "00:00:00:00:00:00" else "Unknown"
-
+            fabricante = obtener_fabricante(mac) if mac != "00:00:00:00:00:00" else "Desconocido"
+            
             if mac == "00:00:00:00:00:00" and hostname:
                 hostname_lower = hostname.lower()
                 if "nothing" in hostname_lower:
-                    vendor = "Nothing Technology"
+                    fabricante = "Nothing Technology"
                 elif "samsung" in hostname_lower:
-                    vendor = "Samsung"
+                    fabricante = "Samsung"
                 elif "apple" in hostname_lower or "iphone" in hostname_lower:
-                    vendor = "Apple"
+                    fabricante = "Apple"
                 elif "xiaomi" in hostname_lower:
-                    vendor = "Xiaomi"
-
+                    fabricante = "Xiaomi"
+            
             hosts.append({
                 "ip": ip,
                 "mac": mac,
-                "vendor": vendor if vendor != "Unknown" else "Device",
-                "hostname": hostname if hostname else "Unknown",
-                "status": "up",
-                "last_seen": datetime.now().isoformat()
+                "fabricante": fabricante if fabricante != "Desconocido" else "Dispositivo",
+                "hostname": hostname if hostname else "Desconocido",
+                "estado": "up",
+                "ultima_vez_visto": datetime.now().isoformat()
             })
-
+            
             if not quiet:
                 host_str = f" ({hostname})" if hostname else ""
-                print(f"   ✅ {ip:15} | {mac:17} | {vendor}{host_str}")
+                print(f"   ✅ {ip:15} | {mac:17} | {fabricante}{host_str}")
 
         if not hosts and env == "wsl":
             if not quiet:
-                print("   🔄 Fallback: Trying ARP...")
+                print("   🔄 Fallback: Intentando con ARP...")
             try:
                 arp_result = subprocess.run(["arp", "-a"], capture_output=True, text=True, timeout=10)
                 for line in arp_result.stdout.split('\n'):
@@ -303,135 +303,135 @@ def scan_with_nmap(network=LOCAL_NETWORK, quiet=False):
                     if len(parts) >= 2 and '.' in parts[0]:
                         ip = parts[0]
                         mac = parts[1].replace('-', ':').lower() if len(parts) > 1 else "00:00:00:00:00:00"
-                        my_ip = get_my_ip()
-                        if ip != my_ip and not ip.startswith("224.") and not ip.startswith("239."):
+                        mi_ip = obtener_mi_ip()
+                        if ip != mi_ip and not ip.startswith("224.") and not ip.startswith("239."):
                             hostname = resolve_hostname(ip)
-                            vendor = get_vendor(mac) if mac != "00:00:00:00:00:00" else "Unknown"
+                            fabricante = obtener_fabricante(mac) if mac != "00:00:00:00:00:00" else "Desconocido"
                             hosts.append({
                                 "ip": ip,
                                 "mac": mac,
-                                "vendor": vendor,
-                                "hostname": hostname if hostname else "Unknown",
-                                "status": "up",
-                                "last_seen": datetime.now().isoformat()
+                                "fabricante": fabricante,
+                                "hostname": hostname if hostname else "Desconocido",
+                                "estado": "up",
+                                "ultima_vez_visto": datetime.now().isoformat()
                             })
                             if not quiet:
-                                print(f"   ✅ {ip:15} | {mac:17} | {hostname or 'Unknown'} ({vendor})")
+                                print(f"   ✅ {ip:15} | {mac:17} | {hostname or 'Desconocido'} ({fabricante})")
             except Exception as e:
                 if not quiet:
-                    print(f"   ⚠️ Error in ARP fallback: {e}")
+                    print(f"   ⚠️ Error en ARP fallback: {e}")
 
         return hosts
 
     except subprocess.TimeoutExpired:
         if not quiet:
-            print("❌ Timeout during Nmap scan")
+            print("❌ Timeout en escaneo Nmap")
         return []
     except Exception as e:
         if not quiet:
-            print(f"❌ Error in Nmap: {e}")
+            print(f"❌ Error en Nmap: {e}")
         return []
 
-def scan_network(network=LOCAL_NETWORK, quiet=False):
-    return scan_with_nmap(network, quiet)
+def escanear_red(red=RED_LOCAL, quiet=False):
+    return escanear_con_nmap(red, quiet)
 
-def load_baseline():
-    if BASELINE_FILE.exists():
-        with open(BASELINE_FILE, 'r', encoding='utf-8') as f:
+def cargar_linea_base():
+    if ARCHIVO_LINEA_BASE.exists():
+        with open(ARCHIVO_LINEA_BASE, 'r', encoding='utf-8') as f:
             return json.load(f)
     return []
 
-def save_baseline(devices):
-    with open(BASELINE_FILE, 'w', encoding='utf-8') as f:
-        json.dump(devices, f, indent=2, ensure_ascii=False)
+def guardar_linea_base(dispositivos):
+    with open(ARCHIVO_LINEA_BASE, 'w', encoding='utf-8') as f:
+        json.dump(dispositivos, f, indent=2, ensure_ascii=False)
 
-def log_alert(message):
+def registrar_alerta(mensaje):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(LOG_FILE, 'a', encoding='utf-8') as f:
-        f.write(f"[{timestamp}] {message}\n")
+    with open(ARCHIVO_LOG, 'a', encoding='utf-8') as f:
+        f.write(f"[{timestamp}] {mensaje}\n")
 
-def detect_changes(current_hosts, baseline):
-    known_ips = {d['ip'] for d in baseline}
-    current_ips = {h['ip'] for h in current_hosts}
+def detectar_cambios(hosts_actuales, linea_base):
+    ips_conocidas = {d['ip'] for d in linea_base}
+    ips_actuales = {h['ip'] for h in hosts_actuales}
 
-    new_ips = current_ips - known_ips
-    missing_ips = known_ips - current_ips
+    nuevas_ips = ips_actuales - ips_conocidas
+    desaparecidas_ips = ips_conocidas - ips_actuales
 
-    new_devices = [h for h in current_hosts if h['ip'] in new_ips]
-    missing_devices = [d for d in baseline if d['ip'] in missing_ips]
+    nuevas = [h for h in hosts_actuales if h['ip'] in nuevas_ips]
+    desaparecidas = [d for d in linea_base if d['ip'] in desaparecidas_ips]
 
-    return {"new": new_devices, "missing": missing_devices}
+    return {"nuevas": nuevas, "desaparecidas": desaparecidas}
 
 def main():
     parser = argparse.ArgumentParser(description="ATLANTIS Vigía - Network Scanner")
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    parser.add_argument("--network", default=LOCAL_NETWORK, help="Network to scan (CIDR)")
+    parser.add_argument("--red", default=RED_LOCAL, help="Network to scan (CIDR)")
     args = parser.parse_args()
 
     if args.json:
-        current_hosts = scan_network(args.network, quiet=True)
-        output = {"timestamp": datetime.now().isoformat(), "network": args.network, "devices": current_hosts, "total": len(current_hosts)}
+        hosts_actuales = escanear_red(args.red, quiet=True)
+        output = {"timestamp": datetime.now().isoformat(), "red": args.red, "dispositivos": hosts_actuales, "total": len(hosts_actuales)}
         print(json.dumps(output, ensure_ascii=False))
         return
 
     print("╔" + "═"*68 + "╗")
-    print("║     ATLANTIS - VIGÍA v5.8 (RELATIVE PATHS)            ║")
+    print("║     ATLANTIS - EL VIGÍA v5.8 (RUTAS RELATIVAS)        ║")
     print("╚" + "═"*68 + "╝")
 
     env = get_environment()
-    my_ip = get_my_ip()
-    print(f"🖥️  Your IP: {my_ip}")
-    print(f"🌐 Detected network: {LOCAL_NETWORK}")
-    print(f"📡 Environment: {env.upper()}")
+    mi_ip = obtener_mi_ip()
+    print(f"🖥️  Tu IP: {mi_ip}")
+    print(f"🌐 Red detectada: {RED_LOCAL}")
+    print(f"📡 Entorno: {env.upper()}")
     print()
 
-    current_hosts = scan_network(LOCAL_NETWORK, quiet=False)
+    hosts_actuales = escanear_red(RED_LOCAL, quiet=False)
 
-    if not current_hosts:
-        print("❌ No devices detected.")
+    if not hosts_actuales:
+        print("❌ No se detectaron dispositivos.")
         return
 
-    print(f"\n📡 Devices found: {len(current_hosts)}")
-    print("\n📋 DETECTED DEVICES LIST:")
+    print(f"\n📡 Dispositivos encontrados: {len(hosts_actuales)}")
+    print("\n📋 LISTA DE DISPOSITIVOS DETECTADOS:")
     print("-" * 85)
-    for h in current_hosts:
-        host_str = f" ({h['hostname']})" if h['hostname'] != "Unknown" else ""
-        print(f"   IP: {h['ip']:<15} | MAC: {h['mac']:<17} | {h['vendor']:<20}{host_str}")
+    for h in hosts_actuales:
+        host_str = f" ({h['hostname']})" if h['hostname'] != "Desconocido" else ""
+        print(f"   IP: {h['ip']:<15} | MAC: {h['mac']:<17} | {h['fabricante']:<20}{host_str}")
 
-    baseline = load_baseline()
+    linea_base = cargar_linea_base()
 
-    if not baseline:
-        print("\n🆕 First run. Creating baseline...")
-        save_baseline(current_hosts)
-        log_alert("Initial baseline created")
-        print("✅ Baseline created.")
+    if not linea_base:
+        print("\n🆕 Primera ejecución. Creando línea base...")
+        guardar_linea_base(hosts_actuales)
+        registrar_alerta("Línea base inicial creada")
+        print("✅ Línea base creada.")
         return
 
-    changes = detect_changes(current_hosts, baseline)
+    cambios = detectar_cambios(hosts_actuales, linea_base)
 
-    if changes["new"] or changes["missing"]:
+    if cambios["nuevas"] or cambios["desaparecidas"]:
         print("\n" + "="*70)
-        print("🚨 ALERT! CHANGES DETECTED:")
+        print("🚨 ¡ALERTA! CAMBIOS DETECTADOS:")
         print("="*70)
 
-        if changes["new"]:
-            print("\n🆕 NEW DEVICES:")
-            for d in changes["new"]:
-                print(f"   + {d['ip']} | {d['mac']} | {d['vendor']} | {d['hostname']}")
-                log_alert(f"New device: {d['ip']} - {d['mac']} - {d['vendor']}")
+        if cambios["nuevas"]:
+            print("\n🆕 NUEVOS DISPOSITIVOS:")
+            for d in cambios["nuevas"]:
+                print(f"   + {d['ip']} | {d['mac']} | {d['fabricante']} | {d['hostname']}")
+                registrar_alerta(f"Nuevo dispositivo: {d['ip']} - {d['mac']} - {d['fabricante']}")
 
-        if changes["missing"]:
-            print("\n⚠️ MISSING DEVICES:")
-            for d in changes["missing"]:
-                print(f"   - {d['ip']} | {d['mac']} | {d['vendor']}")
-                log_alert(f"Device missing: {d['ip']} - {d['mac']} - {d['vendor']}")
+        if cambios["desaparecidas"]:
+            print("\n⚠️ DISPOSITIVOS DESAPARECIDOS:")
+            for d in cambios["desaparecidas"]:
+                print(f"   - {d['ip']} | {d['mac']} | {d['fabricante']}")
+                registrar_alerta(f"Dispositivo desaparecido: {d['ip']} - {d['mac']} - {d['fabricante']}")
 
-        response = input("\nUpdate baseline? (y/n): ").lower()
-        if response == 'y':
-            save_baseline(current_hosts)
-            print("✅ Baseline updated.")
+        respuesta = input("\n¿Actualizar línea base? (s/n): ").lower()
+        if respuesta == 's':
+            guardar_linea_base(hosts_actuales)
+            print("✅ Línea base actualizada.")
     else:
-        print("\n✅ All good.")
+        print("\n✅ Todo en orden.")
 
 if __name__ == "__main__":
     main()

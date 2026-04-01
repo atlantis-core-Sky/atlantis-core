@@ -1,7 +1,7 @@
 # 🛡️ ATLANTIS-NEXUS
 ### The only 100% local, AI-powered cybersecurity suite
 
-Atlantis-NEXUS is an autonomous defense platform that runs entirely on your machine.
+Atlantis-NEXUS is an autonomous defense platform that runs entirely on your machine.  
 No cloud, no subscriptions, no data leaving your network.
 
 ---
@@ -51,4 +51,3 @@ git clone https://github.com/your-alias/atlantis-core.git
 cd atlantis-core
 chmod +x install.sh
 ./install.sh
-

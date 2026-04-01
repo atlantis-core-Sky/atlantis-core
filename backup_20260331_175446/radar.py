@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-ATLANTIS - PASSIVE RADAR v2.5 (RELATIVE PATHS)
-Silent network monitoring
-• Automatically detects the current network
-• Input sanitization to avoid command injection
-• Works on any network (home, work, café, hotel)
-• RELATIVE PATHS to the Atlantis executable
+ATLANTIS - RADAR PASIVO v2.5 (RUTAS RELATIVAS)
+Monitoreo silencioso de red
+• Detecta automáticamente la red actual
+• Sanitización de inputs para evitar inyección de comandos
+• Funciona en cualquier red (casa, trabajo, café, hotel)
+• RUTAS RELATIVAS al ejecutable de Atlantis
 """
 
 import os
@@ -26,10 +26,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 # ============================================================
-# BASE PATH DETECTION
+# DETECCIÓN DE RUTA BASE
 # ============================================================
 def get_base_path():
-    """Gets the base path of the Atlantis executable"""
+    """Obtiene la ruta base del ejecutable de Atlantis"""
     try:
         import subprocess as sp
         result = sp.run(["which", "atlantis"], capture_output=True, text=True)
@@ -38,12 +38,12 @@ def get_base_path():
             return exe_path.parent
     except:
         pass
-
+    
     script_dir = Path(__file__).parent.absolute()
     return script_dir.parent.parent
 
 # ============================================================
-# CONFIGURATION - RELATIVE PATHS
+# CONFIGURACIÓN - RUTAS RELATIVAS
 # ============================================================
 BASE_PATH = get_base_path()
 DATA_DIR = BASE_PATH / "data"
@@ -59,7 +59,7 @@ ALERTS_FILE = DEFENSA_DIR / "radar_alerts.json"
 print(f"📁 Data directory: {DATA_DIR}", file=sys.stderr)
 
 # ============================================================
-# INPUT SANITIZATION
+# SANITIZACIÓN DE INPUTS
 # ============================================================
 def sanitize_input(input_str):
     if not input_str:
@@ -74,16 +74,16 @@ def is_wsl():
         return False
 
 # ============================================================
-# AUTOMATIC NETWORK DETECTION
+# DETECCIÓN AUTOMÁTICA DE RED
 # ============================================================
-def detect_current_network():
+def detectar_red_actual():
     try:
         import ipaddress
         import netifaces
 
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
+        ip_local = s.getsockname()[0]
         s.close()
 
         gateways = netifaces.gateways()
@@ -91,8 +91,8 @@ def detect_current_network():
         addrs = netifaces.ifaddresses(iface)
         netmask = addrs[netifaces.AF_INET][0]['netmask']
 
-        network = ipaddress.IPv4Network(f"{local_ip}/{netmask}", strict=False)
-        return str(network)
+        red = ipaddress.IPv4Network(f"{ip_local}/{netmask}", strict=False)
+        return str(red)
     except:
         return "192.168.1.0/24"
 
@@ -131,7 +131,7 @@ class Radar:
         self.sniffer_thread = None
         self.alert_count = 0
         self.in_wsl = is_wsl()
-        self.current_network = detect_current_network()
+        self.red_actual = detectar_red_actual()
         self._setup_signal_handlers()
 
     def _setup_signal_handlers(self):
@@ -208,7 +208,7 @@ class Radar:
 
     def start(self):
         self.running = True
-        self._log(f"Radar started (WSL: {self.in_wsl}) | Network: {self.current_network}")
+        self._log(f"Radar started (WSL: {self.in_wsl}) | Red: {self.red_actual}")
         self._schedule_save()
 
         if not self.in_wsl:
@@ -339,7 +339,7 @@ class Radar:
             "running": self.running,
             "alert_count": self.alert_count,
             "wsl_mode": self.in_wsl,
-            "current_network": self.current_network,
+            "red_actual": self.red_actual,
         }
 
 def main():
@@ -356,7 +356,7 @@ def main():
 
     if args.start:
         print("📡 Starting ATLANTIS Passive Radar...")
-        print(f"   🌐 Detected network: {radar.current_network}")
+        print(f"   🌐 Red detectada: {radar.red_actual}")
         print("   Press Ctrl+C to stop\n")
         try:
             radar.start()
@@ -403,7 +403,7 @@ def main():
             print("="*50)
             print(f"Running: {stats['running']}")
             print(f"WSL Mode: {stats['wsl_mode']}")
-            print(f"Current network: {stats['current_network']}")
+            print(f"Red actual: {stats['red_actual']}")
             print(f"Devices observed: {stats['total_devices_observed']}")
             print(f"Active now: {stats['active_devices_now']}")
             print(f"Total alerts: {stats['total_alerts']}")

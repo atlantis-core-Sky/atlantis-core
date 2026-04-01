@@ -3,19 +3,19 @@
 
 """
 ATLANTIS - ZOMBIE MODULE v2.7 (Final - Fixed Permission Handling)
-Automatic detection, blocking, quarantine
-• Folder monitoring
-• Confirmation before blocking
-• Quarantine of suspicious files
-• Coordination with Defender
-• JSON mode for NEMESIS integration
-• Daemon mode for continuous monitoring
-• File validation (existence, size, type)
-• Intelligent detection with variable weights
-• Balance between detection and false positives
-• FIXED: PID file now written by child process
-• FIXED: Stop kills processes and cleans files
-• FIXED: is_running handles PermissionError (root vs user)
+Detección automática, bloqueo, cuarentena
+• Monitoreo de carpetas
+• Bloqueo con confirmación
+• Cuarentena de archivos sospechosos
+• Coordinación con Defender
+• Modo JSON para integración con NEMESIS
+• Modo daemon para monitoreo continuo
+• Validación de archivos (existencia, tamaño, tipo)
+• Detección inteligente con pesos variables
+• Balance entre detección y falsos positivos
+• CORREGIDO: PID file ahora lo escribe el proceso hijo
+• CORREGIDO: Stop mata procesos y limpia archivos
+• CORREGIDO: is_running maneja PermissionError (root vs user)
 """
 
 import os
@@ -36,10 +36,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 
 # ============================================================
-# BASE PATH DETECTION
+# DETECCIÓN DE RUTA BASE
 # ============================================================
 def get_base_path():
-    """Gets the base path of the Atlantis executable"""
+    """Obtiene la ruta base del ejecutable de Atlantis"""
     try:
         import subprocess as sp
         result = sp.run(["which", "atlantis"], capture_output=True, text=True)
@@ -53,7 +53,7 @@ def get_base_path():
     return script_dir.parent.parent
 
 # ============================================================
-# CONFIGURATION
+# CONFIGURACIÓN
 # ============================================================
 BASE_PATH = get_base_path()
 DATA_DIR = BASE_PATH / "data"
@@ -63,7 +63,7 @@ RULES_FILE = BASE_PATH / "scripts/defensa/zombie_rules.json"
 PID_FILE = DATA_DIR / "zombie.pid"
 STATUS_FILE = DATA_DIR / "zombie_status.json"
 
-# Directories to monitor (configurable)
+# Directorios a monitorear (opcional, se pueden configurar)
 WATCH_DIRS = [
     Path.home() / "Downloads",
     Path.home() / "Desktop",
@@ -115,7 +115,7 @@ class ZombieLogger:
         self._write("DETECTION", f"{status}: {file_path} - {reason} (score: {score:.2f})")
 
 # ============================================================
-# FILE ANALYZERS
+# ANALIZADORES DE ARCHIVOS
 # ============================================================
 class FileAnalyzer:
     def __init__(self, logger: ZombieLogger):
@@ -164,7 +164,7 @@ class FileAnalyzer:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
 
-            # Patterns with balanced weights
+            # Patrones con pesos balanceados
             suspicious_patterns = [
                 (r'eval\s*\(', 'eval()', 0.35),
                 (r'exec\s*\(', 'exec()', 0.35),
@@ -190,14 +190,14 @@ class FileAnalyzer:
                     score += weight
                     found.append(description)
 
-            # Normalize score (theoretical max ~3.0)
+            # Normalizar score (máximo teórico ~3.0)
             normalized_score = min(score / 2.5, 1.0)
 
-            # Intelligent detection:
-            # 1. At least 2 patterns → detect
-            # 2. High severity pattern (weight >= 0.4) → detect
-            # 3. Medium severity pattern (weight >= 0.3) and score > 0.2 → detect
-            # 4. Normalized score > 0.25 → detect
+            # Detección inteligente:
+            # 1. Al menos 2 patrones → detecta
+            # 2. Patrón de alta severidad (peso >= 0.4) → detecta
+            # 3. Patrón de media severidad (peso >= 0.3) Y score > 0.2 → detecta
+            # 4. Score normalizado > 0.25 → detecta
 
             has_high_severity = False
             has_medium_severity = False
@@ -251,7 +251,7 @@ class FileAnalyzer:
         return False, "", 0.0
 
 # ============================================================
-# CONTROLLER WITH QUARANTINE AND VALIDATIONS
+# CONTROLADOR CON CUARENTENA Y VALIDACIONES
 # ============================================================
 class ZombieController:
     def __init__(self, verbose: bool = False, auto_quarantine: bool = False):
@@ -261,7 +261,7 @@ class ZombieController:
         self.auto_quarantine = auto_quarantine
 
     def quarantine_file(self, file_path: Path, reason: str) -> bool:
-        """Moves file to quarantine"""
+        """Mueve archivo a cuarentena"""
         try:
             timestamp = int(time.time())
             quarantine_path = QUARANTINE_DIR / f"{file_path.name}_{timestamp}"
@@ -273,7 +273,7 @@ class ZombieController:
             return False
 
     def _extract_ip_from_file(self, file_path: Path) -> Optional[str]:
-        """Attempts to extract an IP from a file (for blocking)"""
+        """Intenta extraer IP de archivo (para bloqueo)"""
         try:
             with open(file_path, 'r', errors='ignore') as f:
                 content = f.read()
@@ -285,7 +285,7 @@ class ZombieController:
         return None
 
     def _block_ip(self, ip: str):
-        """Blocks IP using the defender"""
+        """Bloquea IP usando el defensor"""
         try:
             import el_defensor
             from el_defensor import DefenderController
@@ -296,10 +296,10 @@ class ZombieController:
             self.logger.error(f"IP block error {ip}: {e}")
 
     def scan_file(self, file_path: str, interactive: bool = True, json_output: bool = False) -> Dict[str, Any]:
-        """Scans a single file with validations"""
+        """Escanea un archivo individual con validaciones"""
         path = Path(file_path)
 
-        # VALIDATION 1: File exists
+        # VALIDACIÓN 1: El archivo existe
         if not path.exists():
             error_result = {
                 "success": False,
@@ -312,7 +312,7 @@ class ZombieController:
             print(f"❌ File not found: {file_path}")
             return error_result
 
-        # VALIDATION 2: Is a file, not a directory
+        # VALIDACIÓN 2: Es un archivo, no un directorio
         if not path.is_file():
             error_result = {
                 "success": False,
@@ -325,7 +325,7 @@ class ZombieController:
             print(f"❌ Path is a directory, not a file: {file_path}")
             return error_result
 
-        # VALIDATION 3: Reasonable size (max 100 MB)
+        # VALIDACIÓN 3: Tamaño razonable (máximo 100 MB)
         try:
             file_size = path.stat().st_size
             if file_size > 100 * 1024 * 1024:  # 100 MB
@@ -400,11 +400,11 @@ class ZombieController:
         return result
 
     def scan_directory(self, directory: str, recursive: bool = True, json_output: bool = False) -> List[Dict]:
-        """Scans a full directory with validations"""
+        """Escanea un directorio completo con validaciones"""
         results = []
         path = Path(directory)
 
-        # VALIDATION 1: Directory exists
+        # VALIDACIÓN 1: El directorio existe
         if not path.exists():
             error_msg = f"Directory not found: {directory}"
             if json_output:
@@ -412,7 +412,7 @@ class ZombieController:
             print(f"❌ {error_msg}")
             return []
 
-        # VALIDATION 2: Is a directory
+        # VALIDACIÓN 2: Es un directorio, no un archivo
         if not path.is_dir():
             error_msg = f"Path is a file, not a directory: {directory}"
             if json_output:
@@ -434,7 +434,7 @@ class ZombieController:
         return results
 
     def get_stats(self, json_output: bool = False) -> Dict:
-        """Gets detection statistics"""
+        """Obtiene estadísticas de detección"""
         detections = []
         if DETECTIONS_FILE.exists():
             with open(DETECTIONS_FILE, 'r', encoding='utf-8') as f:
@@ -491,10 +491,10 @@ class ZombieWatcher:
             time.sleep(5)
 
 # ============================================================
-# DAEMON FUNCTIONS (ENHANCED)
+# DAEMON FUNCTIONS (MEJORADAS)
 # ============================================================
 def write_pid():
-    """Writes the PID of the current process to the file"""
+    """Escribe el PID del proceso actual en el archivo"""
     try:
         with open(PID_FILE, 'w') as f:
             f.write(str(os.getpid()))
@@ -503,7 +503,7 @@ def write_pid():
         pass
 
 def remove_pid():
-    """Deletes the PID file"""
+    """Elimina el archivo PID"""
     try:
         if PID_FILE.exists():
             PID_FILE.unlink()
@@ -512,32 +512,32 @@ def remove_pid():
 
 def is_running():
     """
-    Checks if the daemon/watcher is running.
-    Correctly handles the case where the process is root and user has no permission.
+    Verifica si el daemon/watcher está corriendo.
+    Maneja correctamente el caso en que el proceso es de root y el usuario no tiene permiso.
     """
     if not PID_FILE.exists():
         return False
     try:
         with open(PID_FILE, 'r') as f:
             pid = int(f.read().strip())
-        # Try to send signal 0 to verify existence
+        # Intentar enviar señal 0 para verificar existencia
         os.kill(pid, 0)
         return True
     except ProcessLookupError:
-        # Process does not exist
+        # El proceso no existe
         remove_pid()
         return False
     except PermissionError:
-        # Process exists but we don't have permission to signal it (e.g., root vs user)
-        # Assume it's running
+        # El proceso existe pero no tenemos permiso para señalarlo (ej. root vs user)
+        # Asumimos que está corriendo
         return True
     except:
-        # Other error: clean up and assume not running
+        # Otro error: limpiar y asumir que no corre
         remove_pid()
         return False
 
 def write_status(status: Dict):
-    """Writes status to the status file"""
+    """Escribe el estado en el archivo de estado"""
     try:
         with open(STATUS_FILE, 'w') as f:
             json.dump(status, f)
@@ -597,29 +597,29 @@ EXAMPLES:
     args = parser.parse_args()
 
     # ============================================================
-    # STOP COMMAND (enhanced)
+    # STOP COMMAND (mejorado)
     # ============================================================
     if args.stop:
-        # Try to kill even if is_running() returns False (due to permission)
+        # Intentar matar aunque is_running() devuelva False (por permiso)
         killed = False
         if PID_FILE.exists():
             try:
                 with open(PID_FILE, 'r') as f:
                     pid = int(f.read().strip())
-                # Try SIGTERM first
+                # Intentar matar con SIGTERM
                 os.kill(pid, signal.SIGTERM)
                 time.sleep(1)
-                # Check if still alive
+                # Verificar si aún vive
                 try:
                     os.kill(pid, 0)
-                    # If still alive, kill with SIGKILL
+                    # Si aún vive, matar con SIGKILL
                     os.kill(pid, signal.SIGKILL)
                 except:
                     pass
                 killed = True
             except Exception:
                 pass
-        # Always clean files
+        # Limpiar archivos siempre
         remove_pid()
         if STATUS_FILE.exists():
             STATUS_FILE.unlink()
@@ -687,7 +687,7 @@ EXAMPLES:
     controller = ZombieController(verbose=args.verbose, auto_quarantine=args.auto_quarantine)
 
     # ============================================================
-    # WATCH/DAEMON MODE (for the child process)
+    # WATCH/DAEMON MODE (para el proceso hijo)
     # ============================================================
     if args.watch or args.daemon:
         watcher = ZombieWatcher(controller)

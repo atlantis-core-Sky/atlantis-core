@@ -1,0 +1,9 @@
+2026-03-31 18:52:58 | INFO     | Starting VENOM v2.1 SSH Honeypot on ports: [2222, 2223, 2224]
+2026-03-31 18:52:58 | INFO     |   ✓ Port 2222 - SSH Honeypot
+2026-03-31 18:52:58 | INFO     | SSH Honeypot listening on port 2222
+2026-03-31 18:52:58 | INFO     |   ✓ Port 2223 - SSH Honeypot
+2026-03-31 18:52:58 | INFO     | SSH Honeypot listening on port 2223
+2026-03-31 18:52:59 | INFO     |   ✓ Port 2224 - SSH Honeypot
+2026-03-31 18:52:59 | INFO     | SSH Honeypot listening on port 2224
+2026-03-31 18:53:20 | INFO     | Stopping VENOM Honeypot...
+2026-03-31 18:53:20 | INFO     | Stopping VENOM Honeypot...

@@ -2,16 +2,16 @@
 # -*- coding: utf-8 -*-
 
 """
-ATLANTIS - ARP SPOOFING DETECTOR v3.4 (RELATIVE PATHS)
+ATLANTIS - ARP SPOOFING DETECTOR v3.4 (RUTAS RELATIVAS)
 • Real-time ARP monitoring with configurable timeout
 • JSON output for NEMESIS integration
 • Proper signal handling (Ctrl+C works on Windows)
 • Threshold-based alerting
 • Persistent alert storage
-• Input sanitization
-• Automatic network detection (works on any network)
-• AUTOMATIC BLOCKING of attacking IPs
-• RELATIVE PATHS to the Atlantis executable
+• Sanitización de inputs
+• Detección automática de red (funciona en cualquier red)
+• BLOQUEO AUTOMÁTICO de IPs atacantes
+• RUTAS RELATIVAS al ejecutable de Atlantis
 """
 
 import os
@@ -29,10 +29,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
 # ============================================================
-# BASE PATH DETECTION
+# DETECCIÓN DE RUTA BASE
 # ============================================================
 def get_base_path():
-    """Gets the base path of the Atlantis executable"""
+    """Obtiene la ruta base del ejecutable de Atlantis"""
     try:
         import subprocess as sp
         result = sp.run(["which", "atlantis"], capture_output=True, text=True)
@@ -41,12 +41,12 @@ def get_base_path():
             return exe_path.parent
     except:
         pass
-
+    
     script_dir = Path(__file__).parent.absolute()
     return script_dir.parent.parent
 
 # ============================================================
-# CONFIGURATION - RELATIVE PATHS
+# CONFIGURACIÓN - RUTAS RELATIVAS
 # ============================================================
 BASE_PATH = get_base_path()
 DATA_DIR = BASE_PATH / "data"
@@ -55,33 +55,33 @@ DEFENSA_DIR = DATA_DIR / "defensa"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DEFENSA_DIR.mkdir(parents=True, exist_ok=True)
 
-BASELINE_FILE = DEFENSA_DIR / "baseline.json"
+BASELINE_FILE = DEFENSA_DIR / "linea_base.json"
 LOG_FILE = DEFENSA_DIR / "detective.log"
 ALERTS_FILE = DEFENSA_DIR / "detective_alerts.json"
 
 print(f"📁 Data directory: {DATA_DIR}", file=sys.stderr)
 
 # ============================================================
-# INPUT SANITIZATION
+# SANITIZACIÓN DE INPUTS
 # ============================================================
 def sanitize_input(input_str):
-    """Sanitize input to avoid command injection"""
+    """Sanitiza entrada para evitar inyección de comandos"""
     if not input_str:
         return ""
     return shlex.quote(str(input_str))
 
 # ============================================================
-# AUTOMATIC NETWORK DETECTION
+# DETECCIÓN AUTOMÁTICA DE RED
 # ============================================================
-def detect_current_network():
-    """Detects the current network automatically (home, work, café, hotel)"""
+def detectar_red_actual():
+    """Detecta la red actual automáticamente (casa, trabajo, café, hotel)"""
     try:
         import ipaddress
         import netifaces
 
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
+        ip_local = s.getsockname()[0]
         s.close()
 
         gateways = netifaces.gateways()
@@ -89,8 +89,8 @@ def detect_current_network():
         addrs = netifaces.ifaddresses(iface)
         netmask = addrs[netifaces.AF_INET][0]['netmask']
 
-        network = ipaddress.IPv4Network(f"{local_ip}/{netmask}", strict=False)
-        return str(network)
+        red = ipaddress.IPv4Network(f"{ip_local}/{netmask}", strict=False)
+        return str(red)
     except Exception as e:
         return "192.168.1.0/24"
 
@@ -180,7 +180,7 @@ class ARPDetector:
         self.running = False
         self.alert_count = 0
         self.logger = Logger(log_file, verbose)
-        self.current_network = detect_current_network()
+        self.red_actual = detectar_red_actual()
         self.auto_block = auto_block
 
         self._load_baseline()
@@ -220,11 +220,11 @@ class ARPDetector:
             from el_defensor import DefenderController
             controller = DefenderController(verbose=False, json_output=True)
             if controller.block_ip(ip):
-                self.logger.success(f"🚫 Attacking IP {ip} automatically blocked")
+                self.logger.success(f"🚫 IP atacante {ip} bloqueada automáticamente")
             else:
-                self.logger.error(f"❌ Could not block IP {ip}")
+                self.logger.error(f"❌ No se pudo bloquear IP {ip}")
         except Exception as e:
-            self.logger.error(f"Error blocking IP {ip}: {e}")
+            self.logger.error(f"Error al bloquear IP {ip}: {e}")
 
     def process_packet(self, packet) -> Optional[Dict[str, Any]]:
         if ARP not in packet:
@@ -268,7 +268,7 @@ class ARPDetector:
                     self._save_alert(alert)
 
                     if self.auto_block:
-                        self.logger.info(f"🔒 Activating automatic block for IP {packet_info['src_ip']}")
+                        self.logger.info(f"🔒 Activando bloqueo automático para IP {packet_info['src_ip']}")
                         self._block_attacker(packet_info["src_ip"])
 
                     return alert
@@ -302,8 +302,8 @@ class ARPDetector:
 
         if not self.json_output and self.verbose:
             print("\n🔍 ARP Detective started. Monitoring...")
-            print(f"   🌐 Detected network: {self.current_network}")
-            print(f"   🔒 Automatic block: {'ENABLED' if self.auto_block else 'DISABLED'}")
+            print(f"   🌐 Red detectada: {self.red_actual}")
+            print(f"   🔒 Bloqueo automático: {'ACTIVADO' if self.auto_block else 'DESACTIVADO'}")
             print("   Press Ctrl+C to stop.\n")
 
         try:
@@ -355,7 +355,7 @@ class ARPDetector:
             "running": self.running,
             "threshold": self.threshold,
             "timeout": self.timeout,
-            "current_network": self.current_network,
+            "red_actual": self.red_actual,
             "auto_block": self.auto_block,
         }
 
@@ -487,8 +487,8 @@ EXAMPLES:
     print(f"   • Threshold: {args.threshold}")
     print(f"   • Timeout: {args.timeout if args.timeout else 'continuous'}")
     print(f"   • Mode: {'one-shot' if args.oneshot else 'continuous'}")
-    print(f"   • Detected network: {detector_instance.current_network}")
-    print(f"   • Auto-block: {'ENABLED' if detector_instance.auto_block else 'DISABLED'}")
+    print(f"   • Red detectada: {detector_instance.red_actual}")
+    print(f"   • Auto-block: {'ACTIVADO' if detector_instance.auto_block else 'DESACTIVADO'}")
     print()
 
     try:

@@ -3,12 +3,12 @@
 
 """
 ATLANTIS - ADVANCED HONEYPOTS v1.2
-• HTTP honeypot (WordPress, phpMyAdmin) - ALWAYS WORKS
-• FTP honeypot (captures credentials) - OPTIONAL
-• SMB honeypot (detects ransomware) - OPTIONAL
-• AUTOMATIC BLOCKING of attacking IPs (3+ attempts)
-• CORRECT TERMINATION: kills all child processes
-• Automatic relative paths
+• HTTP honeypot (WordPress, phpMyAdmin) - SIEMPRE FUNCIONA
+• FTP honeypot (captura credenciales) - OPCIONAL
+• SMB honeypot (detecta ransomware) - OPCIONAL
+• BLOQUEO AUTOMÁTICO de IPs atacantes (3+ intentos)
+• CIERRE CORRECTO: mata todos los procesos hijos
+• Rutas relativas automáticas
 """
 
 import os
@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ============================================================
-# ATTEMPT TO IMPORT OPTIONAL DEPENDENCIES
+# INTENTAR IMPORTAR DEPENDENCIAS OPCIONALES
 # ============================================================
 FTP_AVAILABLE = False
 SMB_AVAILABLE = False
@@ -46,7 +46,7 @@ except ImportError:
     pass
 
 # ============================================================
-# BASE PATH DETECTION
+# DETECCIÓN DE RUTA BASE
 # ============================================================
 def get_base_path() -> Path:
     try:
@@ -58,7 +58,7 @@ def get_base_path() -> Path:
                 return exe_path.parent
     except:
         pass
-
+    
     script_dir = Path(__file__).parent.absolute()
     possible_paths = [
         script_dir.parent.parent,
@@ -66,15 +66,15 @@ def get_base_path() -> Path:
         Path.cwd(),
         Path.home() / "atlantis-core",
     ]
-
+    
     for path in possible_paths:
         if (path / "data").exists():
             return path
-
+    
     return script_dir.parent.parent
 
 # ============================================================
-# CONFIGURATION
+# CONFIGURACIÓN
 # ============================================================
 BASE_PATH = get_base_path()
 DATA_DIR = BASE_PATH / "data"
@@ -90,17 +90,17 @@ HONEYPOT_DIR.mkdir(parents=True, exist_ok=True)
 stop_event = threading.Event()
 
 # ============================================================
-# WHITELIST AND AUTOMATIC BLOCKING
+# LISTA BLANCA Y BLOQUEO AUTOMÁTICO
 # ============================================================
 WHITELIST = [
-    '1.1.1.1', '8.8.8.8', '9.9.9.9',  # Public DNS
+    '1.1.1.1', '8.8.8.8', '9.9.9.9',  # DNS públicos
     '208.67.222.222', '208.67.220.220',  # OpenDNS
 ]
 
 def is_local_ip(ip: str) -> bool:
-    """Detects if an IP is local"""
-    return (ip.startswith('127.') or
-            ip.startswith('192.168.') or
+    """Detecta si una IP es local"""
+    return (ip.startswith('127.') or 
+            ip.startswith('192.168.') or 
             ip.startswith('10.') or
             ip.startswith('172.16.') or
             ip.startswith('172.17.') or
@@ -121,12 +121,12 @@ def is_local_ip(ip: str) -> bool:
             ip == '0.0.0.0')
 
 def block_ip_automatically(ip: str, reason: str, honeypot_type: str) -> bool:
-    """Automatically blocks an IP if suspicious"""
+    """Bloquea una IP automáticamente si es sospechosa"""
     if is_local_ip(ip):
         return False
     if ip in WHITELIST:
         return False
-
+    
     try:
         result = subprocess.run(
             ["sudo", sys.executable,
@@ -135,39 +135,39 @@ def block_ip_automatically(ip: str, reason: str, honeypot_type: str) -> bool:
             capture_output=True, text=True, timeout=10
         )
         if result.returncode == 0:
-            print(f"🚫 [AUTOMATIC BLOCK] {ip} - {reason}")
+            print(f"🚫 [BLOQUEO AUTOMÁTICO] {ip} - {reason}")
             return True
     except Exception as e:
-        print(f"⚠️ Error blocking {ip}: {e}")
-
+        print(f"⚠️ Error bloqueando {ip}: {e}")
+    
     return False
 
 # ============================================================
-# LOGGER WITH AUTOMATIC BLOCKING
+# LOGGER CON BLOQUEO AUTOMÁTICO
 # ============================================================
 class HoneypotLogger:
     def __init__(self, log_file: Path, honeypot_type: str):
         self.log_file = log_file
         self.honeypot_type = honeypot_type
         self.attempts = {}
-
+    
     def log(self, attack: Dict):
         attack["timestamp"] = datetime.now().isoformat()
         attack["honeypot_type"] = self.honeypot_type
-
+        
         try:
             with open(self.log_file, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(attack, ensure_ascii=False) + '\n')
         except:
             pass
-
+        
         ip = attack.get("ip")
         if ip and not is_local_ip(ip):
             self.attempts[ip] = self.attempts.get(ip, 0) + 1
             if self.attempts[ip] >= 3:
-                reason = f"{self.honeypot_type} honeypot: {self.attempts[ip]} attempts"
+                reason = f"{self.honeypot_type} honeypot: {self.attempts[ip]} intentos"
                 block_ip_automatically(ip, reason, self.honeypot_type)
-
+        
         print(f"🍯 [{self.honeypot_type}] {attack.get('ip', 'unknown')} - {attack.get('action', 'unknown')}")
 
 # ============================================================
@@ -187,20 +187,20 @@ class WordPressHandler(BaseHTTPRequestHandler):
         "/api": "API Endpoint",
         "/graphql": "GraphQL API",
     }
-
+    
     def log_message(self, format, *args):
         pass
-
+    
     def do_GET(self):
         self._handle_request("GET")
-
+    
     def do_POST(self):
         self._handle_request("POST")
-
+    
     def _handle_request(self, method):
         client_ip = self.client_address[0]
         path = self.path.split('?')[0]
-
+        
         attack = {
             "ip": client_ip,
             "method": method,
@@ -208,7 +208,7 @@ class WordPressHandler(BaseHTTPRequestHandler):
             "user_agent": self.headers.get('User-Agent', 'unknown'),
             "action": f"{method} {path}"
         }
-
+        
         if path in self.fake_pages:
             content = f"<html><body><h1>{self.fake_pages[path]}</h1><form method='POST'><input type='text' name='log'><input type='password' name='pwd'><input type='submit'></form></body></html>"
             self.send_response(200)
@@ -228,7 +228,7 @@ class WordPressHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             attack["response"] = 404
-
+        
         if self.logger:
             self.logger.log(attack)
 
@@ -239,7 +239,7 @@ class HTTPServerThread(threading.Thread):
         self.logger = logger
         self.server = None
         self.running = False
-
+    
     def run(self):
         WordPressHandler.logger = self.logger
         self.server = HTTPServer(('0.0.0.0', self.port), WordPressHandler)
@@ -251,19 +251,19 @@ class HTTPServerThread(threading.Thread):
             except:
                 pass
         self.server.server_close()
-
+    
     def stop(self):
         self.running = False
         if self.server:
             self.server.shutdown()
 
 # ============================================================
-# FTP HONEYPOT (OPTIONAL)
+# FTP HONEYPOT (OPCIONAL)
 # ============================================================
 if FTP_AVAILABLE:
     class FTPHoneypotHandler(FTPHandler):
         logger = None
-
+        
         def on_login(self, username, password):
             attack = {
                 "ip": self.remote_ip,
@@ -275,7 +275,7 @@ if FTP_AVAILABLE:
             if self.logger:
                 self.logger.log(attack)
             return False
-
+        
         def on_login_failed(self, username, password):
             attack = {
                 "ip": self.remote_ip,
@@ -295,7 +295,7 @@ if FTP_AVAILABLE:
             self.logger = logger
             self.server = None
             self.running = False
-
+        
         def run(self):
             try:
                 authorizer = DummyAuthorizer()
@@ -309,7 +309,7 @@ if FTP_AVAILABLE:
                 self.server.serve_forever()
             except Exception as e:
                 print(f"⚠️ FTP error: {e}")
-
+        
         def stop(self):
             self.running = False
             if self.server:
@@ -320,15 +320,15 @@ else:
             super().__init__(daemon=True)
             self.port = port
             self.logger = logger
-
+        
         def run(self):
-            print("⚠️ FTP honeypot not available (install: pip install pyftpdlib)")
-
+            print("⚠️ FTP honeypot no disponible (instala: pip install pyftpdlib)")
+        
         def stop(self):
             pass
 
 # ============================================================
-# SMB HONEYPOT (OPTIONAL)
+# SMB HONEYPOT (OPCIONAL)
 # ============================================================
 if SMB_AVAILABLE:
     class SMBHoneypot(threading.Thread):
@@ -338,7 +338,7 @@ if SMB_AVAILABLE:
             self.logger = logger
             self.server = None
             self.running = False
-
+        
         def run(self):
             try:
                 self.server = smbserver.SMBSERVER(('0.0.0.0', self.port))
@@ -347,7 +347,7 @@ if SMB_AVAILABLE:
                 self.server.serve_forever()
             except Exception as e:
                 print(f"⚠️ SMB error: {e}")
-
+        
         def stop(self):
             self.running = False
             if self.server:
@@ -358,15 +358,15 @@ else:
             super().__init__(daemon=True)
             self.port = port
             self.logger = logger
-
+        
         def run(self):
-            print("⚠️ SMB honeypot not available (install: pip install impacket)")
-
+            print("⚠️ SMB honeypot no disponible (instala: pip install impacket)")
+        
         def stop(self):
             pass
 
 # ============================================================
-# MAIN CONTROLLER
+# CONTROLADOR PRINCIPAL
 # ============================================================
 class AdvancedHoneypotController:
     def __init__(self, verbose: bool = False):
@@ -378,34 +378,34 @@ class AdvancedHoneypotController:
         self.ftp_thread = None
         self.smb_thread = None
         self.running = False
-
+    
     def start(self, ports: Dict[str, int] = None):
         if ports is None:
             ports = {"http": 8080, "ftp": 21, "smb": 445}
-
+        
         self.http_thread = HTTPServerThread(ports["http"], self.http_logger)
         self.http_thread.start()
-
+        
         self.ftp_thread = FTPServerThread(ports["ftp"], self.ftp_logger)
         self.ftp_thread.start()
-
+        
         self.smb_thread = SMBHoneypot(ports["smb"], self.smb_logger)
         self.smb_thread.start()
-
+        
         self.running = True
         print(f"\n🍯 Advanced honeypots started:")
         print(f"   HTTP: port {ports['http']} ✅")
         if FTP_AVAILABLE:
             print(f"   FTP: port {ports['ftp']} ✅")
         else:
-            print(f"   FTP: port {ports['ftp']} ⚠️ (not available)")
+            print(f"   FTP: port {ports['ftp']} ⚠️ (no disponible)")
         if SMB_AVAILABLE:
             print(f"   SMB: port {ports['smb']} ✅")
         else:
-            print(f"   SMB: port {ports['smb']} ⚠️ (not available)")
-        print(f"\n🔒 Automatic blocking enabled (3 attempts = block)")
+            print(f"   SMB: port {ports['smb']} ⚠️ (no disponible)")
+        print(f"\n🔒 Bloqueo automático activado (3 intentos = bloqueo)")
         print()
-
+    
     def stop(self):
         stop_event.set()
         if self.http_thread:
@@ -416,7 +416,7 @@ class AdvancedHoneypotController:
             self.smb_thread.stop()
         self.running = False
         print("🍯 Advanced honeypots stopped")
-
+    
     def get_stats(self) -> Dict:
         stats = {"http": 0, "ftp": 0, "smb": 0}
         for log, name in [(HTTP_LOG, "http"), (FTP_LOG, "ftp"), (SMB_LOG, "smb")]:
@@ -429,7 +429,7 @@ class AdvancedHoneypotController:
         return stats
 
 # ============================================================
-# DAEMON FUNCTIONS (CORRECTED - KILLS WHOLE PROCESS GROUP)
+# FUNCIONES DE DAEMON (CORREGIDAS - MATA TODO EL GRUPO)
 # ============================================================
 def write_pid():
     try:
@@ -466,22 +466,22 @@ def is_running():
         return False
 
 def stop_process():
-    """Stops the process and ALL its children (the whole group)"""
+    """Detiene el proceso y TODOS sus hijos (el grupo completo)"""
     if PID_FILE.exists():
         try:
             with open(PID_FILE, 'r') as f:
                 pid = int(f.read().strip())
-
-            # Kill the whole process group
+            
+            # Matar todo el grupo de procesos
             try:
                 os.killpg(os.getpgid(pid), signal.SIGTERM)
             except:
-                # If can't kill the group, kill the individual process
+                # Si no se puede matar el grupo, matar el proceso individual
                 os.kill(pid, signal.SIGTERM)
-
+            
             time.sleep(2)
-
-            # Ensure they are dead
+            
+            # Asegurar que murieron
             try:
                 os.killpg(os.getpgid(pid), signal.SIGKILL)
             except:
@@ -510,25 +510,25 @@ controller = None
 # ============================================================
 def main():
     parser = argparse.ArgumentParser(
-        description="ATLANTIS Advanced Honeypots v1.2 - With correct termination",
+        description="ATLANTIS Advanced Honeypots v1.2 - Con cierre correcto",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-EXAMPLES:
-  # Start all honeypots
+EJEMPLOS:
+  # Iniciar todos los honeypots
   sudo python3 honeypot_advanced.py --start
 
-  # View statistics
+  # Ver estadísticas
   python3 honeypot_advanced.py --stats
 
-  # Stop (kills all child processes)
+  # Detener (mata todos los procesos hijos)
   sudo python3 honeypot_advanced.py --stop
 
-AUTOMATIC BLOCKING:
-  After 3 attempts from the same IP, it is automatically blocked.
-  Local IPs (192.168.x.x, 10.x.x.x) and whitelist are not blocked.
+BLOQUEO AUTOMÁTICO:
+  Después de 3 intentos desde la misma IP, se bloquea automáticamente.
+  IPs locales (192.168.x.x, 10.x.x.x) y lista blanca no se bloquean.
         """
     )
-
+    
     parser.add_argument("--start", action="store_true", help="Start all honeypots")
     parser.add_argument("--stop", action="store_true", help="Stop running honeypots")
     parser.add_argument("--status", action="store_true", help="Show status")
@@ -538,12 +538,12 @@ AUTOMATIC BLOCKING:
     parser.add_argument("--smb-port", type=int, default=445, help="SMB port")
     parser.add_argument("--json", action="store_true", help="JSON output")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-
+    
     args = parser.parse_args()
-
+    
     global controller
     controller = AdvancedHoneypotController(verbose=args.verbose)
-
+    
     if args.stop:
         if is_running():
             stop_process()
@@ -557,7 +557,7 @@ AUTOMATIC BLOCKING:
             else:
                 print("❌ Advanced honeypots not running")
         return
-
+    
     if args.status:
         running = is_running()
         if args.json:
@@ -565,7 +565,7 @@ AUTOMATIC BLOCKING:
         else:
             print(f"Advanced honeypots: {'✅ Running' if running else '⏸️ Stopped'}")
         return
-
+    
     if args.stats:
         stats = controller.get_stats()
         if args.json:
@@ -576,7 +576,7 @@ AUTOMATIC BLOCKING:
             print(f"FTP attacks: {stats['ftp']}")
             print(f"SMB attacks: {stats['smb']}")
         return
-
+    
     if args.start:
         if is_running():
             if args.json:
@@ -584,8 +584,8 @@ AUTOMATIC BLOCKING:
             else:
                 print("❌ Advanced honeypots already running")
             return
-
-        # Daemonize
+        
+        # Daemonizar
         pid = os.fork()
         if pid > 0:
             write_pid()
@@ -594,26 +594,26 @@ AUTOMATIC BLOCKING:
                 print(json.dumps({"success": True, "action": "start", "pid": pid}))
             else:
                 print(f"✅ Advanced honeypots started (PID: {pid})")
-                print(f"   🔒 Automatic blocking: 3 attempts = block")
+                print(f"   🔒 Bloqueo automático: 3 intentos = bloqueo")
                 if not FTP_AVAILABLE:
-                    print("   ⚠️ FTP honeypot not available (install: pip install pyftpdlib)")
+                    print("   ⚠️ FTP honeypot no disponible (instala: pip install pyftpdlib)")
                 if not SMB_AVAILABLE:
-                    print("   ⚠️ SMB honeypot not available (install: pip install impacket)")
+                    print("   ⚠️ SMB honeypot no disponible (instala: pip install impacket)")
             return
         else:
-            # Create new process group so we can kill all children later
+            # Crear nuevo grupo de procesos para poder matarlos todos después
             os.setsid()
             sys.stdin = open('/dev/null', 'r')
             sys.stdout = open('/dev/null', 'w')
             sys.stderr = open('/dev/null', 'w')
-
+    
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-
+    
     controller.start(ports={"http": args.http_port, "ftp": args.ftp_port, "smb": args.smb_port})
     write_pid()
     write_status({"running": True, "start_time": datetime.now().isoformat()})
-
+    
     try:
         while not stop_event.is_set():
             time.sleep(1)

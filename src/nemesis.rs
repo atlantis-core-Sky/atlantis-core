@@ -12,19 +12,19 @@ pub struct Nemesis {
 #[derive(Debug, Deserialize)]
 struct ScanResult {
     timestamp: String,
-    red: String,
-    dispositivos: Vec<Dispositivo>,
+    network: String,
+    devices: Vec<DeviceInfo>,
     total: usize,
 }
 
 #[derive(Debug, Deserialize)]
-struct Dispositivo {
+struct DeviceInfo {
     ip: String,
     mac: String,
-    fabricante: String,
+    vendor: String,
     hostname: String,
-    estado: String,
-    ultima_vez_visto: String,
+    status: String,
+    last_seen: String,
 }
 
 impl Nemesis {
@@ -51,17 +51,17 @@ impl Nemesis {
         }
     }
 
-    /// Detecta la ruta de Python automáticamente
+    /// Detect Python path automatically
     fn get_python_path(&self) -> String {
-        // 1. Intentar usar el entorno virtual activo
+        // 1. Try to use the active virtual environment
         if let Ok(venv) = std::env::var("VIRTUAL_ENV") {
             return format!("{}/bin/python3", venv);
         }
-        // 2. Si no, usar python3 del PATH
+        // 2. Otherwise, use python3 from PATH
         "python3".to_string()
     }
 
-    /// Helper: ejecuta un comando y devuelve el stdout
+    /// Helper: execute a command and return stdout
     fn run_python_script(&self, script: &str, args: &[&str]) -> Result<String, Box<dyn Error>> {
         let current_dir = std::env::current_dir()?;
         std::env::set_current_dir(&self.script_path)?;
@@ -82,7 +82,7 @@ impl Nemesis {
         }
     }
 
-    /// Helper: ejecuta un comando en segundo plano (no espera)
+    /// Helper: spawn a command in the background (does not wait)
     fn spawn_python_script(&self, script: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
         let current_dir = std::env::current_dir()?;
         std::env::set_current_dir(&self.script_path)?;
@@ -107,12 +107,12 @@ impl Nemesis {
 
         if let Ok(result) = serde_json::from_str::<ScanResult>(&output) {
             if let Some(mem) = memory {
-                println!("💾 Saving {} devices to memory...", result.dispositivos.len());
-                for d in &result.dispositivos {
+                println!("💾 Saving {} devices to memory...", result.devices.len());
+                for d in &result.devices {
                     let device = Device {
                         ip: d.ip.clone(),
                         mac: d.mac.clone(),
-                        vendor: d.fabricante.clone(),
+                        vendor: d.vendor.clone(),
                         hostname: d.hostname.clone(),
                         first_seen: chrono::Local::now().to_rfc3339(),
                         last_seen: chrono::Local::now().to_rfc3339(),
@@ -128,23 +128,23 @@ impl Nemesis {
             let mut formatted = format!("\n📡 SCAN RESULTS ({} devices found):\n", result.total);
             formatted.push_str("────────────────────────────────────\n");
             formatted.push_str(&format!("🕒 Time: {}\n", result.timestamp));
-            formatted.push_str(&format!("🌐 Network: {}\n", result.red));
+            formatted.push_str(&format!("🌐 Network: {}\n", result.network));
             formatted.push_str("────────────────────────────────────\n");
 
-            for d in result.dispositivos {
+            for d in result.devices {
                 formatted.push_str(&format!(
                     "  • IP: {:<15} | MAC: {:<17} | {}\n",
-                    d.ip, d.mac, d.fabricante
+                    d.ip, d.mac, d.vendor
                 ));
-                if d.hostname != "Desconocido" {
+                if d.hostname != "Unknown" {
                     formatted.push_str(&format!("    📛 Hostname: {}\n", d.hostname));
                 }
-                if d.estado != "up" {
-                    formatted.push_str(&format!("    ⚠️  Status: {}\n", d.estado));
+                if d.status != "up" {
+                    formatted.push_str(&format!("    ⚠️  Status: {}\n", d.status));
                 }
-                let visto: Vec<&str> = d.ultima_vez_visto.split('T').collect();
-                if visto.len() > 1 {
-                    formatted.push_str(&format!("    ⏱️  Last seen: {}\n", visto[0]));
+                let seen: Vec<&str> = d.last_seen.split('T').collect();
+                if seen.len() > 1 {
+                    formatted.push_str(&format!("    ⏱️  Last seen: {}\n", seen[0]));
                 }
             }
             Ok(formatted)
@@ -494,7 +494,7 @@ impl Nemesis {
     }
 
     // ============================================================
-    // ZOMBIE MODULE (CORREGIDO: sleep después de spawn)
+    // ZOMBIE MODULE (FIXED: sleep after spawn)
     // ============================================================
 
     pub fn zombie_scan_file(&self, file_path: &str) -> Result<String, Box<dyn Error>> {

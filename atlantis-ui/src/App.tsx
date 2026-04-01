@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
 // ============================================================
-// CONFIGURACIÓN
+// CONFIGURATION
 // ============================================================
+// API base URL and authentication token
 const API_URL = 'http://localhost:8080';
 const API_TOKEN = 'ATLANTIS_SECURE_2026';
 
-// Interceptores
+// Axios interceptors for logging requests/responses (development only)
 axios.interceptors.request.use(
   (config) => {
     console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
@@ -35,7 +36,7 @@ axios.interceptors.response.use(
 );
 
 // ============================================================
-// INTERFACES (EXISTENTES)
+// TYPE DEFINITIONS (EXISTING)
 // ============================================================
 interface Stats {
   total_devices: number;
@@ -103,7 +104,7 @@ interface ZombieStats {
 }
 
 // ============================================================
-// NUEVAS INTERFACES
+// NEW TYPE DEFINITIONS
 // ============================================================
 interface AdvancedHoneypotStats {
   http: number;
@@ -152,7 +153,7 @@ interface ChatMessage {
 }
 
 // ============================================================
-// FUNCIÓN PARA ASEGURAR ARRAY
+// HELPER: Ensure data is an array (handles stringified JSON)
 // ============================================================
 function ensureArray<T>(data: any): T[] {
   if (Array.isArray(data)) return data;
@@ -168,10 +169,10 @@ function ensureArray<T>(data: any): T[] {
 }
 
 // ============================================================
-// COMPONENTE PRINCIPAL
+// MAIN COMPONENT
 // ============================================================
 function App() {
-  // Estados existentes
+  // --- Existing state variables ---
   const [stats, setStats] = useState<Stats | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [events, setEvents] = useState<SecurityEvent[]>([]);
@@ -192,7 +193,7 @@ function App() {
   const [zombieDirPath, setZombieDirPath] = useState('');
   const [zombieRecursive, setZombieRecursive] = useState(false);
 
-  // Nuevos estados
+  // --- New state variables (modules) ---
   const [advancedHoneypotStats, setAdvancedHoneypotStats] = useState<AdvancedHoneypotStats>({ http: 0, ftp: 0, smb: 0 });
   const [advancedHoneypotRunning, setAdvancedHoneypotRunning] = useState<boolean>(false);
   const [trafficStats, setTrafficStats] = useState<TrafficStats | null>(null);
@@ -203,12 +204,16 @@ function App() {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [safeMode, setSafeMode] = useState<boolean>(false);
-  const [iaAvailable, setIaAvailable] = useState<boolean>(true);
+
+  // iaAvailable is not used in the current UI, but kept for potential future features.
+  // const [iaAvailable, setIaAvailable] = useState<boolean>(true); // Unused, kept commented for reference.
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // ============================================================
-  // FUNCIONES EXISTENTES (testConnection, fetchZombieStats, etc.)
+  // FETCH FUNCTIONS
   // ============================================================
+
   const testConnection = async () => {
     try {
       const res = await axios.get(`${API_URL}/health`);
@@ -253,9 +258,7 @@ function App() {
     }
   };
 
-  // ============================================================
-  // NUEVAS FUNCIONES DE FETCH
-  // ============================================================
+  // Module-specific fetch functions
   const fetchAdvancedHoneypotStats = async () => {
     try {
       const res = await axios.post(`${API_URL}/api/scan`,
@@ -408,7 +411,7 @@ function App() {
   };
 
   // ============================================================
-  // FETCH DATA PRINCIPAL
+  // MAIN DATA FETCH
   // ============================================================
   const fetchData = async () => {
     try {
@@ -487,7 +490,7 @@ function App() {
   const searchDevices = async () => { if (!searchQuery.trim()) return; await fetchDevices(searchQuery); };
 
   // ============================================================
-  // OPERACIONES ASÍNCRONAS (runAsyncAction, runSyncAction existentes)
+  // ACTION HANDLERS (Async / Sync)
   // ============================================================
   const runAsyncAction = async (action: string, body?: any) => {
     setActionLoading(action);
@@ -703,7 +706,7 @@ function App() {
       <h1 style={{ fontSize: '2em', marginBottom: '5px', color: '#00ff00', textShadow: '0 0 5px #00ff00', borderBottom: '1px solid #00ff00', display: 'inline-block' }}>🛡️ ATLANTIS-NEXUS</h1>
       <h2 style={{ fontSize: '1em', color: '#88ff88', marginTop: 5, marginBottom: '20px', opacity: 0.8 }}>EL OJO 2.0 - ENTERPRISE EDITION [HACKER MODE]</h2>
 
-      {/* Botones principales */}
+      {/* Main action buttons */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '25px', flexWrap: 'wrap' }}>
         <button onClick={() => runSyncAction('vigia')} disabled={!!actionLoading} style={{ padding: '12px 24px', backgroundColor: '#0a2f1a', color: '#00ff00', border: '1px solid #00ff00', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontFamily: 'monospace' }}>{actionLoading === 'vigia' ? '⏳ Scanning...' : '🔍 Scan Network'}</button>
         <button onClick={() => runSyncAction('radar_devices')} disabled={!!actionLoading} style={{ padding: '12px 24px', backgroundColor: '#0a2f1a', color: '#00ff00', border: '1px solid #00ff00', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontFamily: 'monospace' }}>{actionLoading === 'radar_devices' ? '⏳ Running...' : '📡 Run Radar'}</button>
@@ -712,7 +715,7 @@ function App() {
         <button onClick={stopHoneypot} disabled={!!actionLoading || !honeypotRunning} style={{ padding: '12px 24px', backgroundColor: '#3a1a1a', color: '#ff8888', border: '1px solid #ff4444', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontFamily: 'monospace', opacity: !honeypotRunning ? 0.6 : 1 }}>{actionLoading === 'honeypot_stop' ? '⏳ Stopping...' : '🛑 Stop Honeypot'}</button>
       </div>
 
-      {/* Tarjetas de estadísticas */}
+      {/* Statistics cards */}
       <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <div style={{ border: '1px solid #00ff00', padding: '20px', borderRadius: '12px', flex: 1, minWidth: '180px', backgroundColor: '#0f1422', boxShadow: '0 0 10px rgba(0,255,0,0.1)' }}>
           <h3 style={{ marginTop: 0, color: '#00ff00' }}>📊 Statistics</h3>

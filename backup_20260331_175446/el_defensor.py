@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 
 """
-ATLANTIS - FIREWALL DEFENDER v3.1 (RELATIVE PATHS)
-• Works on Windows (netsh/PowerShell) and Linux/WSL (iptables)
+ATLANTIS - FIREWALL DEFENDER v3.1 (RUTAS RELATIVAS)
+• Funciona en Windows (netsh/PowerShell) y Linux/WSL (iptables)
 • JSON output for NEMESIS integration
 • Automatic IP blocking from ARP alerts
 • Manual block/unblock with verification
 • Comprehensive logging and statistics
-• Input sanitization
-• RELATIVE PATHS to the Atlantis executable
+• Sanitización de inputs
+• RUTAS RELATIVAS al ejecutable de Atlantis
 """
 
 import os
@@ -27,10 +27,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
 # ============================================================
-# BASE PATH DETECTION
+# DETECCIÓN DE RUTA BASE
 # ============================================================
 def get_base_path():
-    """Gets the base path of the Atlantis executable"""
+    """Obtiene la ruta base del ejecutable de Atlantis"""
     try:
         import subprocess as sp
         result = sp.run(["which", "atlantis"], capture_output=True, text=True)
@@ -39,12 +39,12 @@ def get_base_path():
             return exe_path.parent
     except:
         pass
-
+    
     script_dir = Path(__file__).parent.absolute()
     return script_dir.parent.parent
 
 # ============================================================
-# CONFIGURATION - RELATIVE PATHS
+# CONFIGURACIÓN - RUTAS RELATIVAS
 # ============================================================
 BASE_PATH = get_base_path()
 DATA_DIR = BASE_PATH / "data"
@@ -53,7 +53,7 @@ DEFENSA_DIR = DATA_DIR / "defensa"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DEFENSA_DIR.mkdir(parents=True, exist_ok=True)
 
-ALERTS_FILE = DEFENSA_DIR / "arp_alerts.json"
+ALERTS_FILE = DEFENSA_DIR / "alertas_arp.json"
 BLOCKED_IPS_FILE = DEFENSA_DIR / "blocked_ips.json"
 LOG_FILE = DEFENSA_DIR / "defender.log"
 
@@ -64,7 +64,7 @@ if not BLOCKED_IPS_FILE.exists():
         json.dump({}, f)
 
 # ============================================================
-# INPUT SANITIZATION
+# SANITIZACIÓN DE INPUTS
 # ============================================================
 def sanitize_input(input_str):
     if not input_str:
@@ -72,7 +72,7 @@ def sanitize_input(input_str):
     return shlex.quote(str(input_str))
 
 # ============================================================
-# ENVIRONMENT DETECTION
+# DETECCIÓN DE ENTORNO
 # ============================================================
 def is_wsl():
     try:
@@ -137,14 +137,14 @@ class DefenderLogger:
             pass
 
 # ============================================================
-# FIREWALL MANAGER (ADAPTIVE)
+# FIREWALL MANAGER (ADAPTATIVO)
 # ============================================================
 class FirewallManager:
     def __init__(self, logger: DefenderLogger):
         self.logger = logger
         self.rule_prefix = "ATLANTIS_Block_"
         self.env = self._detect_env()
-        self.logger.info(f"Firewall Manager started in mode: {self.env}")
+        self.logger.info(f"Firewall Manager iniciado en modo: {self.env}")
 
     def _detect_env(self):
         if is_windows():
@@ -157,29 +157,29 @@ class FirewallManager:
             return "unknown"
 
     def block_ip(self, ip: str) -> bool:
-        sanitized_ip = sanitize_input(ip)
-
+        ip_sanitizado = sanitize_input(ip)
+        
         if self.env == "windows":
-            return self._block_ip_windows(sanitized_ip)
+            return self._block_ip_windows(ip_sanitizado)
         elif self.env in ["wsl", "linux"]:
-            return self._block_ip_linux(sanitized_ip)
+            return self._block_ip_linux(ip_sanitizado)
         else:
-            self.logger.error(f"Unsupported environment: {self.env}")
+            self.logger.error(f"Entorno no soportado: {self.env}")
             return False
 
     def unblock_ip(self, ip: str) -> bool:
-        sanitized_ip = sanitize_input(ip)
-
+        ip_sanitizado = sanitize_input(ip)
+        
         if self.env == "windows":
-            return self._unblock_ip_windows(sanitized_ip)
+            return self._unblock_ip_windows(ip_sanitizado)
         elif self.env in ["wsl", "linux"]:
-            return self._unblock_ip_linux(sanitized_ip)
+            return self._unblock_ip_linux(ip_sanitizado)
         else:
             return False
 
     def _block_ip_windows(self, ip: str) -> bool:
         rule_name = f"{self.rule_prefix}{ip.replace('.', '_')}"
-        self.logger.info(f"Blocking IP {ip} (Windows Firewall)")
+        self.logger.info(f"Bloqueando IP {ip} (Windows Firewall)")
 
         netsh_cmd = [
             "netsh", "advfirewall", "firewall", "add", "rule",
@@ -190,10 +190,10 @@ class FirewallManager:
         try:
             result = subprocess.run(netsh_cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
-                self.logger.success(f"IP {ip} blocked (netsh)")
+                self.logger.success(f"IP {ip} bloqueada (netsh)")
                 return True
         except Exception as e:
-            self.logger.warning(f"netsh failed: {e}")
+            self.logger.warning(f"netsh falló: {e}")
 
         ps_cmd = [
             "powershell", "-Command",
@@ -205,30 +205,30 @@ class FirewallManager:
         try:
             result = subprocess.run(ps_cmd, capture_output=True, text=True, timeout=15)
             if result.returncode == 0:
-                self.logger.success(f"IP {ip} blocked (PowerShell)")
+                self.logger.success(f"IP {ip} bloqueada (PowerShell)")
                 return True
         except Exception as e:
-            self.logger.warning(f"PowerShell failed: {e}")
+            self.logger.warning(f"PowerShell falló: {e}")
 
         return False
 
     def _block_ip_linux(self, ip: str) -> bool:
-        self.logger.info(f"Blocking IP {ip} (iptables)")
+        self.logger.info(f"Bloqueando IP {ip} (iptables)")
 
         try:
             subprocess.run(["iptables", "--version"], capture_output=True, check=True)
         except:
-            self.logger.warning("iptables not available")
+            self.logger.warning("iptables no disponible")
             return False
 
         try:
             cmd = ["sudo", "iptables", "-A", "INPUT", "-s", ip, "-j", "DROP"]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
-                self.logger.success(f"IP {ip} blocked (iptables)")
+                self.logger.success(f"IP {ip} bloqueada (iptables)")
                 return True
             else:
-                self.logger.warning(f"iptables failed: {result.stderr}")
+                self.logger.warning(f"iptables falló: {result.stderr}")
         except Exception as e:
             self.logger.warning(f"iptables exception: {e}")
 
@@ -236,7 +236,7 @@ class FirewallManager:
             cmd = ["sudo", "ip6tables", "-A", "INPUT", "-s", ip, "-j", "DROP"]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
-                self.logger.success(f"IP {ip} blocked (ip6tables)")
+                self.logger.success(f"IP {ip} bloqueada (ip6tables)")
                 return True
         except:
             pass
@@ -245,13 +245,13 @@ class FirewallManager:
 
     def _unblock_ip_windows(self, ip: str) -> bool:
         rule_name = f"{self.rule_prefix}{ip.replace('.', '_')}"
-        self.logger.info(f"Unblocking IP {ip} (Windows Firewall)")
+        self.logger.info(f"Desbloqueando IP {ip} (Windows Firewall)")
 
         netsh_cmd = ["netsh", "advfirewall", "firewall", "delete", "rule", f"name={rule_name}"]
         try:
             result = subprocess.run(netsh_cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
-                self.logger.success(f"IP {ip} unblocked")
+                self.logger.success(f"IP {ip} desbloqueada")
                 return True
         except:
             pass
@@ -260,7 +260,7 @@ class FirewallManager:
         try:
             result = subprocess.run(ps_cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
-                self.logger.success(f"IP {ip} unblocked (PowerShell)")
+                self.logger.success(f"IP {ip} desbloqueada (PowerShell)")
                 return True
         except:
             pass
@@ -268,22 +268,22 @@ class FirewallManager:
         return False
 
     def _unblock_ip_linux(self, ip: str) -> bool:
-        self.logger.info(f"Unblocking IP {ip} (iptables)")
+        self.logger.info(f"Desbloqueando IP {ip} (iptables)")
 
         try:
             cmd = ["sudo", "iptables", "-D", "INPUT", "-s", ip, "-j", "DROP"]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
-                self.logger.success(f"IP {ip} unblocked (iptables)")
+                self.logger.success(f"IP {ip} desbloqueada (iptables)")
                 return True
         except Exception as e:
-            self.logger.warning(f"iptables delete failed: {e}")
+            self.logger.warning(f"iptables delete falló: {e}")
 
         try:
             cmd = ["sudo", "ip6tables", "-D", "INPUT", "-s", ip, "-j", "DROP"]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
-                self.logger.success(f"IP {ip} unblocked (ip6tables)")
+                self.logger.success(f"IP {ip} desbloqueada (ip6tables)")
                 return True
         except:
             pass
@@ -442,15 +442,15 @@ class DefenderController:
         self.verbose = verbose
 
     def block_ip(self, ip: str) -> bool:
-        sanitized_ip = sanitize_input(ip)
-        success = self.firewall.block_ip(sanitized_ip)
+        ip_sanitizado = sanitize_input(ip)
+        success = self.firewall.block_ip(ip_sanitizado)
 
         if success:
             try:
                 with open(BLOCKED_IPS_FILE, 'r', encoding='utf-8') as f:
                     blocked = json.load(f)
 
-                blocked[sanitized_ip] = {
+                blocked[ip_sanitizado] = {
                     "blocked_at": datetime.now().isoformat(),
                     "method": "manual"
                 }
@@ -463,16 +463,16 @@ class DefenderController:
         return success
 
     def unblock_ip(self, ip: str) -> bool:
-        sanitized_ip = sanitize_input(ip)
-        success = self.firewall.unblock_ip(sanitized_ip)
+        ip_sanitizado = sanitize_input(ip)
+        success = self.firewall.unblock_ip(ip_sanitizado)
 
         if success:
             try:
                 with open(BLOCKED_IPS_FILE, 'r', encoding='utf-8') as f:
                     blocked = json.load(f)
 
-                if sanitized_ip in blocked:
-                    del blocked[sanitized_ip]
+                if ip_sanitizado in blocked:
+                    del blocked[ip_sanitizado]
 
                 with open(BLOCKED_IPS_FILE, 'w', encoding='utf-8') as f:
                     json.dump(blocked, f, indent=2, ensure_ascii=False)
