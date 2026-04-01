@@ -1,3 +1,4 @@
+![Atlantis-NEXUS Logo](docs/images/logo.png)
 # 🛡️ ATLANTIS-NEXUS
 ### The only 100% local, AI-powered cybersecurity suite
 
