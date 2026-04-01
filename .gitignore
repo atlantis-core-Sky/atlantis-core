@@ -45,3 +45,5 @@ atlantis-ui/.env
 Thumbs.db
 atlantis-ui/node_modules/
 backup_*/
+data/venom_logs/*.log
+data/honeypot_status.json
