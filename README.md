@@ -47,7 +47,7 @@ All components run **100% locally**. No telemetry, no external servers, no subsc
 
 ### Quick install
 ```bash
-git clone https://github.com/your-alias/atlantis-core.git
+git clone https://github.com/atlantis-core-Sky/atlantis-core.git
 cd atlantis-core
 chmod +x install.sh
 ./install.sh
