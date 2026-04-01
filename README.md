@@ -36,6 +36,7 @@ All components run **100% locally**. No telemetry, no external servers, no subsc
 - **Data** is stored encrypted in `data/` (devices, events, logs). The encryption key is embedded in the Rust binary.
 - **AI** uses Ollama locally (models like `dolphin-phi` recommended). It can be disabled if not needed.
 
+![Events & Devices](docs/images/interface-yes-no.png)
 ---
 
 ## 🚀 Installation
