@@ -4,7 +4,7 @@
 
 Atlantis-NEXUS is an autonomous defense platform that runs entirely on your machine.
 No cloud, no subscriptions, no data leaving your network.
-![Dashboard Preview](docs/images/statistics.png)
+![Events Preview](docs/images/events.png)
 ---
 
 ## 📖 What is Atlantis-NEXUS?
