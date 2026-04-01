@@ -47,3 +47,5 @@ atlantis-ui/node_modules/
 backup_*/
 data/venom_logs/*.log
 data/honeypot_status.json
+data/honeypot_status.json
+data/venom_logs/*.log
